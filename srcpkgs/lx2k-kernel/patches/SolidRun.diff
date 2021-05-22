@@ -1,0 +1,3830 @@
+diff --git a/Documentation/ABI/stable/sysfs-bus-fsl-mc b/Documentation/ABI/stable/sysfs-bus-fsl-mc
+new file mode 100644
+index 000000000000..58f06c7eeed7
+--- /dev/null
++++ b/Documentation/ABI/stable/sysfs-bus-fsl-mc
+@@ -0,0 +1,19 @@
++What:		/sys/bus/fsl-mc/rescan
++Date:		January 2021
++KernelVersion:	5.12
++Contact:	Ioana Ciornei <ioana.ciornei@nxp.com>
++Description:	Writing a non-zero value to this attribute will
++		force a rescan of fsl-mc bus in the system and
++		synchronize the objects under fsl-mc bus and the
++		Management Complex firmware.
++Users:		Userspace drivers and management tools
++
++What:		/sys/bus/fsl-mc/autorescan
++Date:		January 2021
++KernelVersion:	5.12
++Contact:	Ioana Ciornei <ioana.ciornei@nxp.com>
++Description:	Writing a zero value to this attribute will
++		disable the DPRC IRQs on which automatic rescan
++		of the fsl-mc bus is performed. A non-zero value
++		will enable the DPRC IRQs.
++Users:		Userspace drivers and management tools
+diff --git a/Documentation/firmware-guide/acpi/dsd/phy.rst b/Documentation/firmware-guide/acpi/dsd/phy.rst
+new file mode 100644
+index 000000000000..7d01ae8b3cc6
+--- /dev/null
++++ b/Documentation/firmware-guide/acpi/dsd/phy.rst
+@@ -0,0 +1,133 @@
++.. SPDX-License-Identifier: GPL-2.0
++
++=========================
++MDIO bus and PHYs in ACPI
++=========================
++
++The PHYs on an MDIO bus [1] are probed and registered using
++fwnode_mdiobus_register_phy().
++
++Later, for connecting these PHYs to their respective MACs, the PHYs registered
++on the MDIO bus have to be referenced.
++
++This document introduces two _DSD properties that are to be used
++for connecting PHYs on the MDIO bus [3] to the MAC layer.
++
++These properties are defined in accordance with the "Device
++Properties UUID For _DSD" [2] document and the
++daffd814-6eba-4d8c-8a91-bc9bbf4aa301 UUID must be used in the Device
++Data Descriptors containing them.
++
++phy-handle
++----------
++For each MAC node, a device property "phy-handle" is used to reference
++the PHY that is registered on an MDIO bus. This is mandatory for
++network interfaces that have PHYs connected to MAC via MDIO bus.
++
++During the MDIO bus driver initialization, PHYs on this bus are probed
++using the _ADR object as shown below and are registered on the MDIO bus.
++
++::
++      Scope(\_SB.MDI0)
++      {
++        Device(PHY1) {
++          Name (_ADR, 0x1)
++        } // end of PHY1
++
++        Device(PHY2) {
++          Name (_ADR, 0x2)
++        } // end of PHY2
++      }
++
++Later, during the MAC driver initialization, the registered PHY devices
++have to be retrieved from the MDIO bus. For this, the MAC driver needs
++references to the previously registered PHYs which are provided
++as device object references (e.g. \_SB.MDI0.PHY1).
++
++phy-mode
++--------
++The "phy-mode" _DSD property is used to describe the connection to
++the PHY. The valid values for "phy-mode" are defined in [4].
++
++The following ASL example illustrates the usage of these properties.
++
++DSDT entry for MDIO node
++------------------------
++
++The MDIO bus has an SoC component (MDIO controller) and a platform
++component (PHYs on the MDIO bus).
++
++a) Silicon Component
++This node describes the MDIO controller, MDI0
++---------------------------------------------
++::
++	Scope(_SB)
++	{
++	  Device(MDI0) {
++	    Name(_HID, "NXP0006")
++	    Name(_CCA, 1)
++	    Name(_UID, 0)
++	    Name(_CRS, ResourceTemplate() {
++	      Memory32Fixed(ReadWrite, MDI0_BASE, MDI_LEN)
++	      Interrupt(ResourceConsumer, Level, ActiveHigh, Shared)
++	       {
++		 MDI0_IT
++	       }
++	    }) // end of _CRS for MDI0
++	  } // end of MDI0
++	}
++
++b) Platform Component
++The PHY1 and PHY2 nodes represent the PHYs connected to MDIO bus MDI0
++---------------------------------------------------------------------
++::
++	Scope(\_SB.MDI0)
++	{
++	  Device(PHY1) {
++	    Name (_ADR, 0x1)
++	  } // end of PHY1
++
++	  Device(PHY2) {
++	    Name (_ADR, 0x2)
++	  } // end of PHY2
++	}
++
++DSDT entries representing MAC nodes
++-----------------------------------
++
++Below are the MAC nodes where PHY nodes are referenced.
++phy-mode and phy-handle are used as explained earlier.
++------------------------------------------------------
++::
++	Scope(\_SB.MCE0.PR17)
++	{
++	  Name (_DSD, Package () {
++	     ToUUID("daffd814-6eba-4d8c-8a91-bc9bbf4aa301"),
++		 Package () {
++		     Package (2) {"phy-mode", "rgmii-id"},
++		     Package (2) {"phy-handle", \_SB.MDI0.PHY1}
++	      }
++	   })
++	}
++
++	Scope(\_SB.MCE0.PR18)
++	{
++	  Name (_DSD, Package () {
++	    ToUUID("daffd814-6eba-4d8c-8a91-bc9bbf4aa301"),
++		Package () {
++		    Package (2) {"phy-mode", "rgmii-id"},
++		    Package (2) {"phy-handle", \_SB.MDI0.PHY2}}
++	    }
++	  })
++	}
++
++References
++==========
++
++[1] Documentation/networking/phy.rst
++
++[2] https://www.uefi.org/sites/default/files/resources/_DSD-device-properties-UUID.pdf
++
++[3] Documentation/firmware-guide/acpi/DSD-properties-rules.rst
++
++[4] Documentation/devicetree/bindings/net/ethernet-controller.yaml
+diff --git a/Documentation/userspace-api/ioctl/ioctl-number.rst b/Documentation/userspace-api/ioctl/ioctl-number.rst
+index 55a2d9b2ce33..3851e64b067b 100644
+--- a/Documentation/userspace-api/ioctl/ioctl-number.rst
++++ b/Documentation/userspace-api/ioctl/ioctl-number.rst
+@@ -180,6 +180,7 @@ Code  Seq#    Include File                                           Comments
+ 'R'   00-1F  linux/random.h                                          conflict!
+ 'R'   01     linux/rfkill.h                                          conflict!
+ 'R'   C0-DF  net/bluetooth/rfcomm.h
++'R'   E0     uapi/linux/fsl_mc.h
+ 'S'   all    linux/cdrom.h                                           conflict!
+ 'S'   80-81  scsi/scsi_ioctl.h                                       conflict!
+ 'S'   82-FF  scsi/scsi.h                                             conflict!
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 281de213ef47..590779774dd2 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -6585,6 +6585,8 @@ F:	Documentation/devicetree/bindings/net/mdio*
+ F:	Documentation/devicetree/bindings/net/qca,ar803x.yaml
+ F:	Documentation/networking/phy.rst
+ F:	drivers/net/mdio/
++F:	drivers/net/mdio/acpi_mdio.c
++F:	drivers/net/mdio/fwnode_mdio.c
+ F:	drivers/net/mdio/of_mdio.c
+ F:	drivers/net/pcs/
+ F:	drivers/net/phy/
+@@ -14420,9 +14422,11 @@ M:	Stuart Yoder <stuyoder@gmail.com>
+ M:	Laurentiu Tudor <laurentiu.tudor@nxp.com>
+ L:	linux-kernel@vger.kernel.org
+ S:	Maintained
++F:	Documentation/ABI/stable/sysfs-bus-fsl-mc
+ F:	Documentation/devicetree/bindings/misc/fsl,qoriq-mc.txt
+ F:	Documentation/networking/device_drivers/ethernet/freescale/dpaa2/overview.rst
+ F:	drivers/bus/fsl-mc/
++F:	include/uapi/linux/fsl_mc.h
+ 
+ QT1010 MEDIA DRIVER
+ M:	Antti Palosaari <crope@iki.fi>
+diff --git a/drivers/acpi/arm64/iort.c b/drivers/acpi/arm64/iort.c
+index 2494138a6905..8f86779d283a 100644
+--- a/drivers/acpi/arm64/iort.c
++++ b/drivers/acpi/arm64/iort.c
+@@ -12,6 +12,7 @@
+ 
+ #include <linux/acpi_iort.h>
+ #include <linux/bitfield.h>
++#include <linux/dma-iommu.h>
+ #include <linux/iommu.h>
+ #include <linux/kernel.h>
+ #include <linux/list.h>
+@@ -40,6 +41,25 @@ struct iort_fwnode {
+ static LIST_HEAD(iort_fwnode_list);
+ static DEFINE_SPINLOCK(iort_fwnode_lock);
+ 
++struct iort_rmr_id {
++	u32  sid;
++	struct acpi_iort_node *smmu;
++};
++
++/*
++ * One entry for IORT RMR.
++ */
++struct iort_rmr_entry {
++	struct list_head list;
++
++	unsigned int rmr_ids_num;
++	struct iort_rmr_id *rmr_ids;
++
++	struct acpi_iort_rmr_desc *rmr_desc;
++};
++
++static LIST_HEAD(iort_rmr_list);         /* list of RMR regions from ACPI */
++
+ /**
+  * iort_set_fwnode() - Create iort_fwnode and use it to register
+  *		       iommu data in the iort_fwnode_list
+@@ -393,7 +413,8 @@ static struct acpi_iort_node *iort_node_get_id(struct acpi_iort_node *node,
+ 		if (node->type == ACPI_IORT_NODE_NAMED_COMPONENT ||
+ 		    node->type == ACPI_IORT_NODE_PCI_ROOT_COMPLEX ||
+ 		    node->type == ACPI_IORT_NODE_SMMU_V3 ||
+-		    node->type == ACPI_IORT_NODE_PMCG) {
++		    node->type == ACPI_IORT_NODE_PMCG ||
++		    node->type == ACPI_IORT_NODE_RMR) {
+ 			*id_out = map->output_base;
+ 			return parent;
+ 		}
+@@ -823,6 +844,63 @@ static inline int iort_add_device_replay(struct device *dev)
+ 	return err;
+ }
+ 
++/**
++ * iort_iommu_get_rmrs - Helper to retrieve RMR info associated with IOMMU
++ * @iommu: fwnode for the IOMMU
++ * @head: RMR list head to be populated
++ *
++ * Returns: 0 on success, <0 failure
++ */
++int iort_iommu_get_rmrs(struct fwnode_handle *iommu_fwnode,
++			struct list_head *head)
++{
++	struct iort_rmr_entry *e;
++	struct acpi_iort_node *iommu;
++
++	iommu = iort_get_iort_node(iommu_fwnode);
++	if (!iommu)
++		return 0;
++
++	list_for_each_entry(e, &iort_rmr_list, list) {
++		struct iort_rmr_id *rmr_ids = e->rmr_ids;
++		struct acpi_iort_rmr_desc *rmr_desc;
++		struct iommu_rmr *rmr;
++		u32 *ids, num_ids = 0;
++		int i, j = 0;
++
++		for (i = 0; i < e->rmr_ids_num; i++) {
++			if (rmr_ids[i].smmu == iommu)
++				num_ids++;
++		}
++
++		if (!num_ids)
++			continue;
++
++		ids = kmalloc_array(num_ids, sizeof(*ids), GFP_KERNEL);
++		if (!ids)
++			return -ENOMEM;
++
++		for (i = 0; i < e->rmr_ids_num; i++) {
++			if (rmr_ids[i].smmu == iommu)
++				ids[j++] = rmr_ids[i].sid;
++		}
++
++		rmr_desc = e->rmr_desc;
++		rmr = iommu_dma_alloc_rmr(rmr_desc->base_address,
++					  rmr_desc->length,
++					  ids, num_ids);
++		if (!rmr) {
++			kfree(ids);
++			return -ENOMEM;
++		}
++
++		list_add_tail(&rmr->list, head);
++		kfree(ids);
++	}
++
++	return 0;
++}
++
+ /**
+  * iort_iommu_msi_get_resv_regions - Reserved region driver helper
+  * @dev: Device from iommu_get_resv_regions()
+@@ -1093,6 +1171,8 @@ int iort_iommu_msi_get_resv_regions(struct device *dev, struct list_head *head)
+ const struct iommu_ops *iort_iommu_configure_id(struct device *dev,
+ 						const u32 *input_id)
+ { return NULL; }
++int iort_iommu_get_rmrs(struct fwnode_handle *fwnode, struct list_head *head)
++{ return 0; }
+ #endif
+ 
+ static int nc_dma_get_range(struct device *dev, u64 *size)
+@@ -1659,6 +1739,103 @@ static void __init iort_enable_acs(struct acpi_iort_node *iort_node)
+ #else
+ static inline void iort_enable_acs(struct acpi_iort_node *iort_node) { }
+ #endif
++static int iort_rmr_desc_valid(struct acpi_iort_rmr_desc *desc)
++{
++	struct iort_rmr_entry *e;
++	u64 end, start = desc->base_address, length = desc->length;
++
++	if (!IS_ALIGNED(start, SZ_64K) || !IS_ALIGNED(length, SZ_64K))
++		return -EINVAL;
++
++	end = start + length - 1;
++
++	/* Check for address overlap */
++	list_for_each_entry(e, &iort_rmr_list, list) {
++		u64 e_start = e->rmr_desc->base_address;
++		u64 e_end = e_start + e->rmr_desc->length - 1;
++
++		if (start <= e_end && end >= e_start)
++			return -EINVAL;
++	}
++
++	return 0;
++}
++
++static int __init iort_parse_rmr(struct acpi_iort_node *iort_node)
++{
++	struct iort_rmr_id *rmr_ids, *ids;
++	struct iort_rmr_entry *e;
++	struct acpi_iort_rmr *rmr;
++	struct acpi_iort_rmr_desc *rmr_desc;
++	u32 map_count = iort_node->mapping_count;
++	int i, ret = 0, desc_count = 0;
++
++	if (iort_node->type != ACPI_IORT_NODE_RMR)
++		return 0;
++
++	if (!iort_node->mapping_offset || !map_count) {
++		pr_err(FW_BUG "Invalid ID mapping, skipping RMR node %p\n",
++		       iort_node);
++		return -EINVAL;
++	}
++
++	rmr_ids = kmalloc(sizeof(*rmr_ids) * map_count, GFP_KERNEL);
++	if (!rmr_ids)
++		return -ENOMEM;
++
++	/* Retrieve associated smmu and stream id */
++	ids = rmr_ids;
++	for (i = 0; i < map_count; i++, ids++) {
++		ids->smmu = iort_node_get_id(iort_node, &ids->sid, i);
++		if (!ids->smmu) {
++			pr_err(FW_BUG "Invalid SMMU reference, skipping RMR node %p\n",
++			       iort_node);
++			ret = -EINVAL;
++			goto out;
++		}
++	}
++
++	/* Retrieve RMR data */
++	rmr = (struct acpi_iort_rmr *)iort_node->node_data;
++	if (!rmr->rmr_offset || !rmr->rmr_count) {
++		pr_err(FW_BUG "Invalid RMR descriptor array, skipping RMR node %p\n",
++		       iort_node);
++		ret = -EINVAL;
++		goto out;
++	}
++
++	rmr_desc = ACPI_ADD_PTR(struct acpi_iort_rmr_desc, iort_node,
++				rmr->rmr_offset);
++
++	for (i = 0; i < rmr->rmr_count; i++, rmr_desc++) {
++		ret = iort_rmr_desc_valid(rmr_desc);
++		if (ret) {
++			pr_err(FW_BUG "Invalid RMR descriptor[%d] for node %p, skipping...\n",
++			       i, iort_node);
++			goto out;
++		}
++
++		e = kmalloc(sizeof(*e), GFP_KERNEL);
++		if (!e) {
++			ret = -ENOMEM;
++			goto out;
++		}
++
++		e->rmr_ids_num = map_count;
++		e->rmr_ids = rmr_ids;
++		e->rmr_desc = rmr_desc;
++
++		list_add_tail(&e->list, &iort_rmr_list);
++		desc_count++;
++	}
++
++	return 0;
++
++out:
++	if (!desc_count)
++		kfree(rmr_ids);
++	return ret;
++}
+ 
+ static void __init iort_init_platform_devices(void)
+ {
+@@ -1688,6 +1865,9 @@ static void __init iort_init_platform_devices(void)
+ 
+ 		iort_enable_acs(iort_node);
+ 
++		if (iort_table->revision == 1)
++			iort_parse_rmr(iort_node);
++
+ 		ops = iort_get_dev_cfg(iort_node);
+ 		if (ops) {
+ 			fwnode = acpi_alloc_fwnode_static();
+diff --git a/drivers/acpi/utils.c b/drivers/acpi/utils.c
+index d5411a166685..0d3a2b111c0f 100644
+--- a/drivers/acpi/utils.c
++++ b/drivers/acpi/utils.c
+@@ -296,6 +296,20 @@ acpi_evaluate_integer(acpi_handle handle,
+ 
+ EXPORT_SYMBOL(acpi_evaluate_integer);
+ 
++int acpi_get_local_address(acpi_handle handle, u32 *addr)
++{
++	unsigned long long adr;
++	acpi_status status;
++
++	status = acpi_evaluate_integer(handle, METHOD_NAME__ADR, NULL, &adr);
++	if (ACPI_FAILURE(status))
++		return -ENODATA;
++
++	*addr = (u32)adr;
++	return 0;
++}
++EXPORT_SYMBOL(acpi_get_local_address);
++
+ acpi_status
+ acpi_evaluate_reference(acpi_handle handle,
+ 			acpi_string pathname,
+diff --git a/drivers/base/property.c b/drivers/base/property.c
+index 4c43d30145c6..c9d76e55a226 100644
+--- a/drivers/base/property.c
++++ b/drivers/base/property.c
+@@ -17,6 +17,7 @@
+ #include <linux/property.h>
+ #include <linux/etherdevice.h>
+ #include <linux/phy.h>
++#include <linux/platform_device.h>
+ 
+ struct fwnode_handle *dev_fwnode(struct device *dev)
+ {
+@@ -837,6 +838,43 @@ enum dev_dma_attr device_get_dma_attr(struct device *dev)
+ }
+ EXPORT_SYMBOL_GPL(device_get_dma_attr);
+ 
++/**
++ * device_match_fw_node - Check if the device is the parent node.
++ * @dev:		Pointer to the device.
++ * @parent_fwnode	Pointer to the parent's firmware node.
++ *
++ * The function returns true if the device has no parent.
++ *
++ */
++static int device_match_fw_node(struct device *dev, const void *parent_fwnode)
++{
++	return dev->fwnode == parent_fwnode;
++}
++
++/**
++ * dev_dma_is_coherent - Check if the device or any of its parents has
++ * dma support enabled.
++ * @dev:     Pointer to the device.
++ *
++ * The function gets the device pointer and check for device_dma_supported()
++ * on the device pointer passed and then recursively on its parent nodes.
++ */
++
++bool dev_dma_is_coherent(struct device *dev)
++{
++	struct fwnode_handle *parent_fwnode;
++
++	while (dev) {
++		if (device_dma_supported(dev))
++			return true;
++		parent_fwnode = fwnode_get_next_parent(dev->fwnode);
++		dev = bus_find_device(&platform_bus_type, NULL,	parent_fwnode,
++				      device_match_fw_node);
++	}
++	return false;
++}
++EXPORT_SYMBOL_GPL(dev_dma_is_coherent);
++
+ /**
+  * fwnode_get_phy_mode - Get phy mode for given firmware node
+  * @fwnode:	Pointer to the given node
+diff --git a/drivers/bus/fsl-mc/Kconfig b/drivers/bus/fsl-mc/Kconfig
+index c23c77c9b705..b1fd55901c50 100644
+--- a/drivers/bus/fsl-mc/Kconfig
++++ b/drivers/bus/fsl-mc/Kconfig
+@@ -14,3 +14,10 @@ config FSL_MC_BUS
+ 	  architecture.  The fsl-mc bus driver handles discovery of
+ 	  DPAA2 objects (which are represented as Linux devices) and
+ 	  binding objects to drivers.
++
++config FSL_MC_UAPI_SUPPORT
++	bool "Management Complex (MC) userspace support"
++	depends on FSL_MC_BUS
++	help
++	  Provides userspace support for interrogating, creating, destroying or
++	  configuring DPAA2 objects exported by the Management Complex.
+diff --git a/drivers/bus/fsl-mc/Makefile b/drivers/bus/fsl-mc/Makefile
+index 3c518c7e8374..4ae292a30e53 100644
+--- a/drivers/bus/fsl-mc/Makefile
++++ b/drivers/bus/fsl-mc/Makefile
+@@ -16,3 +16,6 @@ mc-bus-driver-objs := fsl-mc-bus.o \
+ 		      fsl-mc-allocator.o \
+ 		      fsl-mc-msi.o \
+ 		      dpmcp.o
++
++# MC userspace support
++obj-$(CONFIG_FSL_MC_UAPI_SUPPORT) += fsl-mc-uapi.o
+diff --git a/drivers/bus/fsl-mc/dprc-driver.c b/drivers/bus/fsl-mc/dprc-driver.c
+index 91dc015963a8..787844f0b636 100644
+--- a/drivers/bus/fsl-mc/dprc-driver.c
++++ b/drivers/bus/fsl-mc/dprc-driver.c
+@@ -237,14 +237,14 @@ static void dprc_add_new_devices(struct fsl_mc_device *mc_bus_dev,
+  * populated before they can get allocation requests from probe callbacks
+  * of the device drivers for the non-allocatable devices.
+  */
+-static int dprc_scan_objects(struct fsl_mc_device *mc_bus_dev,
+-			    bool alloc_interrupts)
++int dprc_scan_objects(struct fsl_mc_device *mc_bus_dev,
++		      bool alloc_interrupts)
+ {
+-	int num_child_objects;
++	int num_child_objects, num_child_objects2;
+ 	int dprc_get_obj_failures;
+ 	int error;
+-	unsigned int irq_count = mc_bus_dev->obj_desc.irq_count;
+-	struct fsl_mc_obj_desc *child_obj_desc_array = NULL;
++	unsigned int irq_count;
++	struct fsl_mc_obj_desc *child_obj_desc_array;
+ 	struct fsl_mc_bus *mc_bus = to_fsl_mc_bus(mc_bus_dev);
+ 
+ 	error = dprc_get_obj_count(mc_bus_dev->mc_io,
+@@ -257,6 +257,9 @@ static int dprc_scan_objects(struct fsl_mc_device *mc_bus_dev,
+ 		return error;
+ 	}
+ 
++retry:
++	irq_count = mc_bus_dev->obj_desc.irq_count;
++	child_obj_desc_array = NULL;
+ 	if (num_child_objects != 0) {
+ 		int i;
+ 
+@@ -315,6 +318,29 @@ static int dprc_scan_objects(struct fsl_mc_device *mc_bus_dev,
+ 		}
+ 	}
+ 
++	error = dprc_get_obj_count(mc_bus_dev->mc_io,
++				   0,
++				   mc_bus_dev->mc_handle,
++				   &num_child_objects2);
++	if (error < 0) {
++		if (child_obj_desc_array)
++			devm_kfree(&mc_bus_dev->dev, child_obj_desc_array);
++		dev_err(&mc_bus_dev->dev, "dprc_get_obj_count() failed: %d\n",
++			error);
++		return error;
++	}
++
++	if (num_child_objects != num_child_objects2) {
++		/*
++		 * Something changed while reading the number of objects.
++		 * Retry reading the child object list.
++		 */
++		if (child_obj_desc_array)
++			devm_kfree(&mc_bus_dev->dev, child_obj_desc_array);
++		num_child_objects = num_child_objects2;
++		goto retry;
++	}
++
+ 	/*
+ 	 * Allocate IRQ's before binding the scanned devices with their
+ 	 * respective drivers.
+@@ -458,8 +484,9 @@ static irqreturn_t dprc_irq0_handler_thread(int irq_num, void *arg)
+ /*
+  * Disable and clear interrupt for a given DPRC object
+  */
+-static int disable_dprc_irq(struct fsl_mc_device *mc_dev)
++int disable_dprc_irq(struct fsl_mc_device *mc_dev)
+ {
++	struct fsl_mc_bus *mc_bus = to_fsl_mc_bus(mc_dev);
+ 	int error;
+ 	struct fsl_mc_io *mc_io = mc_dev->mc_io;
+ 
+@@ -496,9 +523,18 @@ static int disable_dprc_irq(struct fsl_mc_device *mc_dev)
+ 		return error;
+ 	}
+ 
++	mc_bus->irq_enabled = 0;
++
+ 	return 0;
+ }
+ 
++int get_dprc_irq_state(struct fsl_mc_device *mc_dev)
++{
++	struct fsl_mc_bus *mc_bus = to_fsl_mc_bus(mc_dev);
++
++	return mc_bus->irq_enabled;
++}
++
+ static int register_dprc_irq_handler(struct fsl_mc_device *mc_dev)
+ {
+ 	int error;
+@@ -525,8 +561,9 @@ static int register_dprc_irq_handler(struct fsl_mc_device *mc_dev)
+ 	return 0;
+ }
+ 
+-static int enable_dprc_irq(struct fsl_mc_device *mc_dev)
++int enable_dprc_irq(struct fsl_mc_device *mc_dev)
+ {
++	struct fsl_mc_bus *mc_bus = to_fsl_mc_bus(mc_dev);
+ 	int error;
+ 
+ 	/*
+@@ -554,6 +591,8 @@ static int enable_dprc_irq(struct fsl_mc_device *mc_dev)
+ 		return error;
+ 	}
+ 
++	mc_bus->irq_enabled = 1;
++
+ 	return 0;
+ }
+ 
+@@ -603,6 +642,7 @@ int dprc_setup(struct fsl_mc_device *mc_dev)
+ 	struct irq_domain *mc_msi_domain;
+ 	bool mc_io_created = false;
+ 	bool msi_domain_set = false;
++	bool uapi_created = false;
+ 	u16 major_ver, minor_ver;
+ 	size_t region_size;
+ 	int error;
+@@ -635,6 +675,11 @@ int dprc_setup(struct fsl_mc_device *mc_dev)
+ 			return error;
+ 
+ 		mc_io_created = true;
++	} else {
++		error = fsl_mc_uapi_create_device_file(mc_bus);
++		if (error < 0)
++			return -EPROBE_DEFER;
++		uapi_created = true;
+ 	}
+ 
+ 	mc_msi_domain = fsl_mc_find_msi_domain(&mc_dev->dev);
+@@ -694,6 +739,9 @@ int dprc_setup(struct fsl_mc_device *mc_dev)
+ 		mc_dev->mc_io = NULL;
+ 	}
+ 
++	if (uapi_created)
++		fsl_mc_uapi_remove_device_file(mc_bus);
++
+ 	return error;
+ }
+ EXPORT_SYMBOL_GPL(dprc_setup);
+@@ -765,6 +813,7 @@ static void dprc_teardown_irq(struct fsl_mc_device *mc_dev)
+ 
+ int dprc_cleanup(struct fsl_mc_device *mc_dev)
+ {
++	struct fsl_mc_bus *mc_bus = to_fsl_mc_bus(mc_dev);
+ 	int error;
+ 
+ 	/* this function should be called only for DPRCs, it
+@@ -795,6 +844,8 @@ int dprc_cleanup(struct fsl_mc_device *mc_dev)
+ 	if (!fsl_mc_is_root_dprc(&mc_dev->dev)) {
+ 		fsl_destroy_mc_io(mc_dev->mc_io);
+ 		mc_dev->mc_io = NULL;
++	} else {
++		fsl_mc_uapi_remove_device_file(mc_bus);
+ 	}
+ 
+ 	return 0;
+diff --git a/drivers/bus/fsl-mc/dprc.c b/drivers/bus/fsl-mc/dprc.c
+index 57b097caf255..27b0a01bad9b 100644
+--- a/drivers/bus/fsl-mc/dprc.c
++++ b/drivers/bus/fsl-mc/dprc.c
+@@ -576,6 +576,8 @@ int dprc_get_obj_region(struct fsl_mc_io *mc_io,
+ 	rsp_params = (struct dprc_rsp_get_obj_region *)cmd.params;
+ 	region_desc->base_offset = le64_to_cpu(rsp_params->base_offset);
+ 	region_desc->size = le32_to_cpu(rsp_params->size);
++	region_desc->type = rsp_params->type;
++	region_desc->flags = le32_to_cpu(rsp_params->flags);
+ 	if (dprc_major_ver > 6 || (dprc_major_ver == 6 && dprc_minor_ver >= 3))
+ 		region_desc->base_address = le64_to_cpu(rsp_params->base_addr);
+ 	else
+diff --git a/drivers/bus/fsl-mc/fsl-mc-bus.c b/drivers/bus/fsl-mc/fsl-mc-bus.c
+index 806766b1b45f..34811db074b7 100644
+--- a/drivers/bus/fsl-mc/fsl-mc-bus.c
++++ b/drivers/bus/fsl-mc/fsl-mc-bus.c
+@@ -60,6 +60,9 @@ struct fsl_mc_addr_translation_range {
+ 	phys_addr_t start_phys_addr;
+ };
+ 
++#define FSL_MC_GCR1	0x0
++#define GCR1_P1_STOP	BIT(31)
++
+ #define FSL_MC_FAPR	0x28
+ #define MC_FAPR_PL	BIT(18)
+ #define MC_FAPR_BMT	BIT(17)
+@@ -205,12 +208,108 @@ static struct attribute *fsl_mc_dev_attrs[] = {
+ 
+ ATTRIBUTE_GROUPS(fsl_mc_dev);
+ 
++static int scan_fsl_mc_bus(struct device *dev, void *data)
++{
++	struct fsl_mc_device *root_mc_dev;
++	struct fsl_mc_bus *root_mc_bus;
++
++	if (!fsl_mc_is_root_dprc(dev))
++		goto exit;
++
++	root_mc_dev = to_fsl_mc_device(dev);
++	root_mc_bus = to_fsl_mc_bus(root_mc_dev);
++	mutex_lock(&root_mc_bus->scan_mutex);
++	dprc_scan_objects(root_mc_dev, NULL);
++	mutex_unlock(&root_mc_bus->scan_mutex);
++
++exit:
++	return 0;
++}
++
++static ssize_t rescan_store(struct bus_type *bus,
++			    const char *buf, size_t count)
++{
++	unsigned long val;
++
++	if (kstrtoul(buf, 0, &val) < 0)
++		return -EINVAL;
++
++	if (val)
++		bus_for_each_dev(bus, NULL, NULL, scan_fsl_mc_bus);
++
++	return count;
++}
++static BUS_ATTR_WO(rescan);
++
++static int fsl_mc_bus_set_autorescan(struct device *dev, void *data)
++{
++	struct fsl_mc_device *root_mc_dev;
++	unsigned long val;
++	char *buf = data;
++
++	if (!fsl_mc_is_root_dprc(dev))
++		goto exit;
++
++	root_mc_dev = to_fsl_mc_device(dev);
++
++	if (kstrtoul(buf, 0, &val) < 0)
++		return -EINVAL;
++
++	if (val)
++		enable_dprc_irq(root_mc_dev);
++	else
++		disable_dprc_irq(root_mc_dev);
++
++exit:
++	return 0;
++}
++
++static int fsl_mc_bus_get_autorescan(struct device *dev, void *data)
++{
++	struct fsl_mc_device *root_mc_dev;
++	char *buf = data;
++
++	if (!fsl_mc_is_root_dprc(dev))
++		goto exit;
++
++	root_mc_dev = to_fsl_mc_device(dev);
++
++	sprintf(buf, "%d\n", get_dprc_irq_state(root_mc_dev));
++exit:
++	return 0;
++}
++
++static ssize_t autorescan_store(struct bus_type *bus,
++				const char *buf, size_t count)
++{
++	bus_for_each_dev(bus, NULL, (void *)buf, fsl_mc_bus_set_autorescan);
++
++	return count;
++}
++
++static ssize_t autorescan_show(struct bus_type *bus, char *buf)
++{
++	bus_for_each_dev(bus, NULL, (void *)buf, fsl_mc_bus_get_autorescan);
++	return strlen(buf);
++}
++
++static BUS_ATTR_RW(autorescan);
++
++static struct attribute *fsl_mc_bus_attrs[] = {
++	&bus_attr_rescan.attr,
++	&bus_attr_autorescan.attr,
++	NULL,
++};
++
++ATTRIBUTE_GROUPS(fsl_mc_bus);
++
+ struct bus_type fsl_mc_bus_type = {
+ 	.name = "fsl-mc",
+ 	.match = fsl_mc_bus_match,
+ 	.uevent = fsl_mc_bus_uevent,
+ 	.dma_configure  = fsl_mc_dma_configure,
+ 	.dev_groups = fsl_mc_dev_groups,
++	.bus_groups = fsl_mc_bus_groups,
+ };
+ EXPORT_SYMBOL_GPL(fsl_mc_bus_type);
+ 
+@@ -973,21 +1072,36 @@ static int fsl_mc_bus_probe(struct platform_device *pdev)
+ 			return PTR_ERR(mc->fsl_mc_regs);
+ 	}
+ 
+-	if (mc->fsl_mc_regs && IS_ENABLED(CONFIG_ACPI) &&
+-	    !dev_of_node(&pdev->dev)) {
+-		mc_stream_id = readl(mc->fsl_mc_regs + FSL_MC_FAPR);
++	if (mc->fsl_mc_regs) {
+ 		/*
+-		 * HW ORs the PL and BMT bit, places the result in bit 15 of
+-		 * the StreamID and ORs in the ICID. Calculate it accordingly.
++		 * Some bootloaders pause the MC firmware before booting the
++		 * kernel so that MC will not cause faults as soon as the
++		 * SMMU probes due to the fact that there's no configuration
++		 * in place for MC.
++		 * At this point MC should have all its SMMU setup done so make
++		 * sure it is resumed.
+ 		 */
+-		mc_stream_id = (mc_stream_id & 0xffff) |
++		writel(readl(mc->fsl_mc_regs + FSL_MC_GCR1) & (~GCR1_P1_STOP),
++		       mc->fsl_mc_regs + FSL_MC_GCR1);
++
++		if (IS_ENABLED(CONFIG_ACPI) && !dev_of_node(&pdev->dev)) {
++			mc_stream_id = readl(mc->fsl_mc_regs + FSL_MC_FAPR);
++			/*
++			 * HW ORs the PL and BMT bit, places the result in bit
++			 * 14 of the StreamID and ORs in the ICID. Calculate it
++			 * accordingly.
++			 */
++			mc_stream_id = (mc_stream_id & 0xffff) |
+ 				((mc_stream_id & (MC_FAPR_PL | MC_FAPR_BMT)) ?
+-					0x4000 : 0);
+-		error = acpi_dma_configure_id(&pdev->dev, DEV_DMA_COHERENT,
+-					      &mc_stream_id);
+-		if (error)
+-			dev_warn(&pdev->dev, "failed to configure dma: %d.\n",
+-				 error);
++					BIT(14) : 0);
++			error = acpi_dma_configure_id(&pdev->dev,
++						      DEV_DMA_COHERENT,
++						      &mc_stream_id);
++			if (error)
++				dev_warn(&pdev->dev,
++					 "failed to configure dma: %d.\n",
++					 error);
++		}
+ 	}
+ 
+ 	/*
+diff --git a/drivers/bus/fsl-mc/fsl-mc-private.h b/drivers/bus/fsl-mc/fsl-mc-private.h
+index 85ca5fdee581..1958fa065360 100644
+--- a/drivers/bus/fsl-mc/fsl-mc-private.h
++++ b/drivers/bus/fsl-mc/fsl-mc-private.h
+@@ -10,6 +10,8 @@
+ 
+ #include <linux/fsl/mc.h>
+ #include <linux/mutex.h>
++#include <linux/ioctl.h>
++#include <linux/miscdevice.h>
+ 
+ /*
+  * Data Path Management Complex (DPMNG) General API
+@@ -211,12 +213,13 @@ struct dprc_cmd_get_obj_region {
+ 
+ struct dprc_rsp_get_obj_region {
+ 	/* response word 0 */
+-	__le64 pad;
++	__le64 pad0;
+ 	/* response word 1 */
+ 	__le64 base_offset;
+ 	/* response word 2 */
+ 	__le32 size;
+-	__le32 pad2;
++	u8 type;
++	u8 pad2[3];
+ 	/* response word 3 */
+ 	__le32 flags;
+ 	__le32 pad3;
+@@ -541,6 +544,22 @@ struct fsl_mc_resource_pool {
+ 	struct fsl_mc_bus *mc_bus;
+ };
+ 
++/**
++ * struct fsl_mc_uapi - information associated with a device file
++ * @misc: struct miscdevice linked to the root dprc
++ * @device: newly created device in /dev
++ * @mutex: mutex lock to serialize the open/release operations
++ * @local_instance_in_use: local MC I/O instance in use or not
++ * @static_mc_io: pointer to the static MC I/O object
++ */
++struct fsl_mc_uapi {
++	struct miscdevice misc;
++	struct device *device;
++	struct mutex mutex; /* serialize open/release operations */
++	u32 local_instance_in_use;
++	struct fsl_mc_io *static_mc_io;
++};
++
+ /**
+  * struct fsl_mc_bus - logical bus that corresponds to a physical DPRC
+  * @mc_dev: fsl-mc device for the bus device itself.
+@@ -550,6 +569,7 @@ struct fsl_mc_resource_pool {
+  * @irq_resources: Pointer to array of IRQ objects for the IRQ pool
+  * @scan_mutex: Serializes bus scanning
+  * @dprc_attr: DPRC attributes
++ * @uapi_misc: struct that abstracts the interaction with userspace
+  */
+ struct fsl_mc_bus {
+ 	struct fsl_mc_device mc_dev;
+@@ -557,6 +577,8 @@ struct fsl_mc_bus {
+ 	struct fsl_mc_device_irq *irq_resources;
+ 	struct mutex scan_mutex;    /* serializes bus scanning */
+ 	struct dprc_attributes dprc_attr;
++	struct fsl_mc_uapi uapi_misc;
++	int irq_enabled;
+ };
+ 
+ #define to_fsl_mc_bus(_mc_dev) \
+@@ -573,6 +595,9 @@ int __init dprc_driver_init(void);
+ 
+ void dprc_driver_exit(void);
+ 
++int dprc_scan_objects(struct fsl_mc_device *mc_bus_dev,
++		      bool alloc_interrupts);
++
+ int __init fsl_mc_allocator_driver_init(void);
+ 
+ void fsl_mc_allocator_driver_exit(void);
+@@ -611,4 +636,29 @@ void fsl_mc_get_root_dprc(struct device *dev,
+ struct fsl_mc_device *fsl_mc_device_lookup(struct fsl_mc_obj_desc *obj_desc,
+ 					   struct fsl_mc_device *mc_bus_dev);
+ 
++u16 mc_cmd_hdr_read_cmdid(struct fsl_mc_command *cmd);
++
++#ifdef CONFIG_FSL_MC_UAPI_SUPPORT
++
++int fsl_mc_uapi_create_device_file(struct fsl_mc_bus *mc_bus);
++
++void fsl_mc_uapi_remove_device_file(struct fsl_mc_bus *mc_bus);
++
++#else
++
++static inline int fsl_mc_uapi_create_device_file(struct fsl_mc_bus *mc_bus)
++{
++	return 0;
++}
++
++static inline void fsl_mc_uapi_remove_device_file(struct fsl_mc_bus *mc_bus)
++{
++}
++
++#endif
++
++int disable_dprc_irq(struct fsl_mc_device *mc_dev);
++int enable_dprc_irq(struct fsl_mc_device *mc_dev);
++int get_dprc_irq_state(struct fsl_mc_device *mc_dev);
++
+ #endif /* _FSL_MC_PRIVATE_H_ */
+diff --git a/drivers/bus/fsl-mc/fsl-mc-uapi.c b/drivers/bus/fsl-mc/fsl-mc-uapi.c
+new file mode 100644
+index 000000000000..eeb988c9f4bb
+--- /dev/null
++++ b/drivers/bus/fsl-mc/fsl-mc-uapi.c
+@@ -0,0 +1,547 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Management Complex (MC) userspace support
++ *
++ * Copyright 2021 NXP
++ *
++ */
++
++#include <linux/slab.h>
++#include <linux/fs.h>
++#include <linux/uaccess.h>
++#include <linux/miscdevice.h>
++
++#include "fsl-mc-private.h"
++
++struct uapi_priv_data {
++	struct fsl_mc_uapi *uapi;
++	struct fsl_mc_io *mc_io;
++};
++
++struct fsl_mc_cmd_desc {
++	u16 cmdid_value;
++	u16 cmdid_mask;
++	int size;
++	bool token;
++	int flags;
++};
++
++#define FSL_MC_CHECK_MODULE_ID		BIT(0)
++#define FSL_MC_CAP_NET_ADMIN_NEEDED	BIT(1)
++
++enum fsl_mc_cmd_index {
++	DPDBG_DUMP = 0,
++	DPDBG_SET,
++	DPRC_GET_CONTAINER_ID,
++	DPRC_CREATE_CONT,
++	DPRC_DESTROY_CONT,
++	DPRC_ASSIGN,
++	DPRC_UNASSIGN,
++	DPRC_GET_OBJ_COUNT,
++	DPRC_GET_OBJ,
++	DPRC_GET_RES_COUNT,
++	DPRC_GET_RES_IDS,
++	DPRC_SET_OBJ_LABEL,
++	DPRC_SET_LOCKED,
++	DPRC_CONNECT,
++	DPRC_DISCONNECT,
++	DPRC_GET_POOL,
++	DPRC_GET_POOL_COUNT,
++	DPRC_GET_CONNECTION,
++	DPCI_GET_LINK_STATE,
++	DPCI_GET_PEER_ATTR,
++	DPAIOP_GET_SL_VERSION,
++	DPAIOP_GET_STATE,
++	DPMNG_GET_VERSION,
++	DPSECI_GET_TX_QUEUE,
++	DPMAC_GET_COUNTER,
++	DPMAC_GET_MAC_ADDR,
++	DPNI_SET_PRIM_MAC,
++	DPNI_GET_PRIM_MAC,
++	DPNI_GET_STATISTICS,
++	DPNI_GET_LINK_STATE,
++	GET_ATTR,
++	GET_IRQ_MASK,
++	GET_IRQ_STATUS,
++	CLOSE,
++	OPEN,
++	GET_API_VERSION,
++	DESTROY,
++	CREATE,
++};
++
++static struct fsl_mc_cmd_desc fsl_mc_accepted_cmds[] = {
++	[DPDBG_DUMP] = {
++		.cmdid_value = 0x1300,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 28,
++	},
++	[DPDBG_SET] = {
++		.cmdid_value = 0x1400,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 28,
++	},
++	[DPRC_GET_CONTAINER_ID] = {
++		.cmdid_value = 0x8300,
++		.cmdid_mask = 0xFFF0,
++		.token = false,
++		.size = 8,
++	},
++	[DPRC_CREATE_CONT] = {
++		.cmdid_value = 0x1510,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 40,
++		.flags = FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++	[DPRC_DESTROY_CONT] = {
++		.cmdid_value = 0x1520,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 12,
++		.flags = FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++	[DPRC_ASSIGN] = {
++		.cmdid_value = 0x1570,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 40,
++		.flags = FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++	[DPRC_UNASSIGN] = {
++		.cmdid_value = 0x1580,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 40,
++		.flags = FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++	[DPRC_GET_OBJ_COUNT] = {
++		.cmdid_value = 0x1590,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 16,
++	},
++	[DPRC_GET_OBJ] = {
++		.cmdid_value = 0x15A0,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 12,
++	},
++	[DPRC_GET_RES_COUNT] = {
++		.cmdid_value = 0x15B0,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 32,
++	},
++	[DPRC_GET_RES_IDS] = {
++		.cmdid_value = 0x15C0,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 40,
++	},
++	[DPRC_SET_OBJ_LABEL] = {
++		.cmdid_value = 0x1610,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 48,
++		.flags = FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++	[DPRC_SET_LOCKED] = {
++		.cmdid_value = 0x16B0,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 16,
++		.flags = FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++	[DPRC_CONNECT] = {
++		.cmdid_value = 0x1670,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 56,
++		.flags = FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++	[DPRC_DISCONNECT] = {
++		.cmdid_value = 0x1680,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 32,
++		.flags = FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++	[DPRC_GET_POOL] = {
++		.cmdid_value = 0x1690,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 12,
++	},
++	[DPRC_GET_POOL_COUNT] = {
++		.cmdid_value = 0x16A0,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 8,
++	},
++	[DPRC_GET_CONNECTION] = {
++		.cmdid_value = 0x16C0,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 32,
++	},
++
++	[DPCI_GET_LINK_STATE] = {
++		.cmdid_value = 0x0E10,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 8,
++	},
++	[DPCI_GET_PEER_ATTR] = {
++		.cmdid_value = 0x0E20,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 8,
++	},
++	[DPAIOP_GET_SL_VERSION] = {
++		.cmdid_value = 0x2820,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 8,
++	},
++	[DPAIOP_GET_STATE] = {
++		.cmdid_value = 0x2830,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 8,
++	},
++	[DPMNG_GET_VERSION] = {
++		.cmdid_value = 0x8310,
++		.cmdid_mask = 0xFFF0,
++		.token = false,
++		.size = 8,
++	},
++	[DPSECI_GET_TX_QUEUE] = {
++		.cmdid_value = 0x1970,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 14,
++	},
++	[DPMAC_GET_COUNTER] = {
++		.cmdid_value = 0x0c40,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 9,
++	},
++	[DPMAC_GET_MAC_ADDR] = {
++		.cmdid_value = 0x0c50,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 8,
++	},
++	[DPNI_SET_PRIM_MAC] = {
++		.cmdid_value = 0x2240,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 16,
++		.flags = FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++	[DPNI_GET_PRIM_MAC] = {
++		.cmdid_value = 0x2250,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 8,
++	},
++	[DPNI_GET_STATISTICS] = {
++		.cmdid_value = 0x25D0,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 10,
++	},
++	[DPNI_GET_LINK_STATE] = {
++		.cmdid_value = 0x2150,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 8,
++	},
++	[GET_ATTR] = {
++		.cmdid_value = 0x0040,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 8,
++	},
++	[GET_IRQ_MASK] = {
++		.cmdid_value = 0x0150,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 13,
++	},
++	[GET_IRQ_STATUS] = {
++		.cmdid_value = 0x0160,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 13,
++	},
++	[CLOSE] = {
++		.cmdid_value = 0x8000,
++		.cmdid_mask = 0xFFF0,
++		.token = true,
++		.size = 8,
++	},
++
++	/* Common commands amongst all types of objects. Must be checked last. */
++	[OPEN] = {
++		.cmdid_value = 0x8000,
++		.cmdid_mask = 0xFC00,
++		.token = false,
++		.size = 12,
++		.flags = FSL_MC_CHECK_MODULE_ID,
++	},
++	[GET_API_VERSION] = {
++		.cmdid_value = 0xA000,
++		.cmdid_mask = 0xFC00,
++		.token = false,
++		.size = 8,
++		.flags = FSL_MC_CHECK_MODULE_ID,
++	},
++	[DESTROY] = {
++		.cmdid_value = 0x9800,
++		.cmdid_mask = 0xFC00,
++		.token = true,
++		.size = 12,
++		.flags = FSL_MC_CHECK_MODULE_ID | FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++	[CREATE] = {
++		.cmdid_value = 0x9000,
++		.cmdid_mask = 0xFC00,
++		.token = true,
++		.size = 64,
++		.flags = FSL_MC_CHECK_MODULE_ID | FSL_MC_CAP_NET_ADMIN_NEEDED,
++	},
++};
++
++#define FSL_MC_NUM_ACCEPTED_CMDS ARRAY_SIZE(fsl_mc_accepted_cmds)
++
++#define FSL_MC_MAX_MODULE_ID 0x10
++
++static int fsl_mc_command_check(struct fsl_mc_device *mc_dev,
++				struct fsl_mc_command *mc_cmd)
++{
++	struct fsl_mc_cmd_desc *desc = NULL;
++	int mc_cmd_max_size, i;
++	bool token_provided;
++	u16 cmdid, module_id;
++	char *mc_cmd_end;
++	char sum = 0;
++
++	/* Check if this is an accepted MC command */
++	cmdid = mc_cmd_hdr_read_cmdid(mc_cmd);
++	for (i = 0; i < FSL_MC_NUM_ACCEPTED_CMDS; i++) {
++		desc = &fsl_mc_accepted_cmds[i];
++		if ((cmdid & desc->cmdid_mask) == desc->cmdid_value)
++			break;
++	}
++	if (!desc) {
++		dev_err(&mc_dev->dev, "MC command 0x%04x: cmdid not accepted\n", cmdid);
++		return -EACCES;
++	}
++
++	/* Check if the size of the command is honored. Anything beyond the
++	 * last valid byte of the command should be zeroed.
++	 */
++	mc_cmd_max_size = sizeof(*mc_cmd);
++	mc_cmd_end = ((char *)mc_cmd) + desc->size;
++	for (i = desc->size; i < mc_cmd_max_size; i++)
++		sum |= *mc_cmd_end++;
++	if (sum) {
++		dev_err(&mc_dev->dev, "MC command 0x%04x: garbage beyond max size of %d bytes!\n",
++			cmdid, desc->size);
++		return -EACCES;
++	}
++
++	/* Some MC commands request a token to be passed so that object
++	 * identification is possible. Check if the token passed in the command
++	 * is as expected.
++	 */
++	token_provided = mc_cmd_hdr_read_token(mc_cmd) ? true : false;
++	if (token_provided != desc->token) {
++		dev_err(&mc_dev->dev, "MC command 0x%04x: token 0x%04x is invalid!\n",
++			cmdid, mc_cmd_hdr_read_token(mc_cmd));
++		return -EACCES;
++	}
++
++	/* If needed, check if the module ID passed is valid */
++	if (desc->flags & FSL_MC_CHECK_MODULE_ID) {
++		/* The module ID is represented by bits [4:9] from the cmdid */
++		module_id = (cmdid & GENMASK(9, 4)) >> 4;
++		if (module_id == 0 || module_id > FSL_MC_MAX_MODULE_ID) {
++			dev_err(&mc_dev->dev, "MC command 0x%04x: unknown module ID 0x%x\n",
++				cmdid, module_id);
++			return -EACCES;
++		}
++	}
++
++	/* Some commands alter how hardware resources are managed. For these
++	 * commands, check for CAP_NET_ADMIN.
++	 */
++	if (desc->flags & FSL_MC_CAP_NET_ADMIN_NEEDED) {
++		if (!capable(CAP_NET_ADMIN)) {
++			dev_err(&mc_dev->dev, "MC command 0x%04x: needs CAP_NET_ADMIN!\n",
++				cmdid);
++			return -EPERM;
++		}
++	}
++
++	return 0;
++}
++
++static int fsl_mc_uapi_send_command(struct fsl_mc_device *mc_dev, unsigned long arg,
++				    struct fsl_mc_io *mc_io)
++{
++	struct fsl_mc_command mc_cmd;
++	int error;
++
++	error = copy_from_user(&mc_cmd, (void __user *)arg, sizeof(mc_cmd));
++	if (error)
++		return -EFAULT;
++
++	error = fsl_mc_command_check(mc_dev, &mc_cmd);
++	if (error)
++		return error;
++
++	error = mc_send_command(mc_io, &mc_cmd);
++	if (error)
++		return error;
++
++	error = copy_to_user((void __user *)arg, &mc_cmd, sizeof(mc_cmd));
++	if (error)
++		return -EFAULT;
++
++	return 0;
++}
++
++static int fsl_mc_uapi_dev_open(struct inode *inode, struct file *filep)
++{
++	struct fsl_mc_device *root_mc_device;
++	struct uapi_priv_data *priv_data;
++	struct fsl_mc_io *dynamic_mc_io;
++	struct fsl_mc_uapi *mc_uapi;
++	struct fsl_mc_bus *mc_bus;
++	int error;
++
++	priv_data = kzalloc(sizeof(*priv_data), GFP_KERNEL);
++	if (!priv_data)
++		return -ENOMEM;
++
++	mc_uapi = container_of(filep->private_data, struct fsl_mc_uapi, misc);
++	mc_bus = container_of(mc_uapi, struct fsl_mc_bus, uapi_misc);
++	root_mc_device = &mc_bus->mc_dev;
++
++	mutex_lock(&mc_uapi->mutex);
++
++	if (!mc_uapi->local_instance_in_use) {
++		priv_data->mc_io = mc_uapi->static_mc_io;
++		mc_uapi->local_instance_in_use = 1;
++	} else {
++		error = fsl_mc_portal_allocate(root_mc_device, 0,
++					       &dynamic_mc_io);
++		if (error) {
++			dev_dbg(&root_mc_device->dev,
++				"Could not allocate MC portal\n");
++			goto error_portal_allocate;
++		}
++
++		priv_data->mc_io = dynamic_mc_io;
++	}
++	priv_data->uapi = mc_uapi;
++	filep->private_data = priv_data;
++
++	mutex_unlock(&mc_uapi->mutex);
++
++	return 0;
++
++error_portal_allocate:
++	mutex_unlock(&mc_uapi->mutex);
++	kfree(priv_data);
++
++	return error;
++}
++
++static int fsl_mc_uapi_dev_release(struct inode *inode, struct file *filep)
++{
++	struct uapi_priv_data *priv_data;
++	struct fsl_mc_uapi *mc_uapi;
++	struct fsl_mc_io *mc_io;
++
++	priv_data = filep->private_data;
++	mc_uapi = priv_data->uapi;
++	mc_io = priv_data->mc_io;
++
++	mutex_lock(&mc_uapi->mutex);
++
++	if (mc_io == mc_uapi->static_mc_io)
++		mc_uapi->local_instance_in_use = 0;
++	else
++		fsl_mc_portal_free(mc_io);
++
++	kfree(filep->private_data);
++	filep->private_data =  NULL;
++
++	mutex_unlock(&mc_uapi->mutex);
++
++	return 0;
++}
++
++static long fsl_mc_uapi_dev_ioctl(struct file *file,
++				  unsigned int cmd,
++				  unsigned long arg)
++{
++	struct uapi_priv_data *priv_data = file->private_data;
++	struct fsl_mc_device *root_mc_device;
++	struct fsl_mc_bus *mc_bus;
++	int error;
++
++	mc_bus = container_of(priv_data->uapi, struct fsl_mc_bus, uapi_misc);
++	root_mc_device = &mc_bus->mc_dev;
++
++	switch (cmd) {
++	case FSL_MC_SEND_MC_COMMAND:
++		error = fsl_mc_uapi_send_command(root_mc_device, arg, priv_data->mc_io);
++		break;
++	default:
++		dev_dbg(&root_mc_device->dev, "unexpected ioctl call number\n");
++		error = -EINVAL;
++	}
++
++	return error;
++}
++
++static const struct file_operations fsl_mc_uapi_dev_fops = {
++	.owner = THIS_MODULE,
++	.open = fsl_mc_uapi_dev_open,
++	.release = fsl_mc_uapi_dev_release,
++	.unlocked_ioctl = fsl_mc_uapi_dev_ioctl,
++};
++
++int fsl_mc_uapi_create_device_file(struct fsl_mc_bus *mc_bus)
++{
++	struct fsl_mc_device *mc_dev = &mc_bus->mc_dev;
++	struct fsl_mc_uapi *mc_uapi = &mc_bus->uapi_misc;
++	int error;
++
++	mc_uapi->misc.minor = MISC_DYNAMIC_MINOR;
++	mc_uapi->misc.name = dev_name(&mc_dev->dev);
++	mc_uapi->misc.fops = &fsl_mc_uapi_dev_fops;
++
++	error = misc_register(&mc_uapi->misc);
++	if (error)
++		return error;
++
++	mc_uapi->static_mc_io = mc_bus->mc_dev.mc_io;
++
++	mutex_init(&mc_uapi->mutex);
++
++	return 0;
++}
++
++void fsl_mc_uapi_remove_device_file(struct fsl_mc_bus *mc_bus)
++{
++	misc_deregister(&mc_bus->uapi_misc.misc);
++}
+diff --git a/drivers/bus/fsl-mc/mc-sys.c b/drivers/bus/fsl-mc/mc-sys.c
+index 85a0225db522..b291b35e3884 100644
+--- a/drivers/bus/fsl-mc/mc-sys.c
++++ b/drivers/bus/fsl-mc/mc-sys.c
+@@ -35,7 +35,7 @@ static enum mc_cmd_status mc_cmd_hdr_read_status(struct fsl_mc_command *cmd)
+ 	return (enum mc_cmd_status)hdr->status;
+ }
+ 
+-static u16 mc_cmd_hdr_read_cmdid(struct fsl_mc_command *cmd)
++u16 mc_cmd_hdr_read_cmdid(struct fsl_mc_command *cmd)
+ {
+ 	struct mc_cmd_header *hdr = (struct mc_cmd_header *)&cmd->header;
+ 	u16 cmd_id = le16_to_cpu(hdr->cmd_id);
+diff --git a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c
+index 7067b7c11626..23c0c4d5ad09 100644
+--- a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c
++++ b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c
+@@ -1174,7 +1174,7 @@ static void arm_smmu_sync_ste_for_sid(struct arm_smmu_device *smmu, u32 sid)
+ }
+ 
+ static void arm_smmu_write_strtab_ent(struct arm_smmu_master *master, u32 sid,
+-				      __le64 *dst)
++				      __le64 *dst, bool bypass)
+ {
+ 	/*
+ 	 * This is hideously complicated, but we only really care about
+@@ -1245,7 +1245,7 @@ static void arm_smmu_write_strtab_ent(struct arm_smmu_master *master, u32 sid,
+ 
+ 	/* Bypass/fault */
+ 	if (!smmu_domain || !(s1_cfg || s2_cfg)) {
+-		if (!smmu_domain && disable_bypass)
++		if (!smmu_domain && disable_bypass && !bypass)
+ 			val |= FIELD_PREP(STRTAB_STE_0_CFG, STRTAB_STE_0_CFG_ABORT);
+ 		else
+ 			val |= FIELD_PREP(STRTAB_STE_0_CFG, STRTAB_STE_0_CFG_BYPASS);
+@@ -1317,7 +1317,7 @@ static void arm_smmu_init_bypass_stes(__le64 *strtab, unsigned int nent)
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < nent; ++i) {
+-		arm_smmu_write_strtab_ent(NULL, -1, strtab);
++		arm_smmu_write_strtab_ent(NULL, -1, strtab, false);
+ 		strtab += STRTAB_STE_DWORDS;
+ 	}
+ }
+@@ -2038,7 +2038,7 @@ static void arm_smmu_install_ste_for_dev(struct arm_smmu_master *master)
+ 		if (j < i)
+ 			continue;
+ 
+-		arm_smmu_write_strtab_ent(master, sid, step);
++		arm_smmu_write_strtab_ent(master, sid, step, false);
+ 	}
+ }
+ 
+@@ -2308,6 +2308,19 @@ static bool arm_smmu_sid_in_range(struct arm_smmu_device *smmu, u32 sid)
+ 
+ static struct iommu_ops arm_smmu_ops;
+ 
++static int arm_smmu_init_sid_strtab(struct arm_smmu_device *smmu, u32 sid)
++{
++	/* Check the SIDs are in range of the SMMU and our stream table */
++	if (!arm_smmu_sid_in_range(smmu, sid))
++		return -ERANGE;
++
++	/* Ensure l2 strtab is initialised */
++	if (smmu->features & ARM_SMMU_FEAT_2_LVL_STRTAB)
++		return arm_smmu_init_l2_strtab(smmu, sid);
++
++	return 0;
++}
++
+ static struct iommu_device *arm_smmu_probe_device(struct device *dev)
+ {
+ 	int i, ret;
+@@ -2336,21 +2349,12 @@ static struct iommu_device *arm_smmu_probe_device(struct device *dev)
+ 	INIT_LIST_HEAD(&master->bonds);
+ 	dev_iommu_priv_set(dev, master);
+ 
+-	/* Check the SIDs are in range of the SMMU and our stream table */
+ 	for (i = 0; i < master->num_sids; i++) {
+ 		u32 sid = master->sids[i];
+ 
+-		if (!arm_smmu_sid_in_range(smmu, sid)) {
+-			ret = -ERANGE;
++		ret = arm_smmu_init_sid_strtab(smmu, sid);
++		if (ret)
+ 			goto err_free_master;
+-		}
+-
+-		/* Ensure l2 strtab is initialised */
+-		if (smmu->features & ARM_SMMU_FEAT_2_LVL_STRTAB) {
+-			ret = arm_smmu_init_l2_strtab(smmu, sid);
+-			if (ret)
+-				goto err_free_master;
+-		}
+ 	}
+ 
+ 	master->ssid_bits = min(smmu->ssid_bits, fwspec->num_pasid_bits);
+@@ -2488,6 +2492,43 @@ static int arm_smmu_of_xlate(struct device *dev, struct of_phandle_args *args)
+ 	return iommu_fwspec_add_ids(dev, args->args, 1);
+ }
+ 
++static bool arm_smmu_dev_has_rmr(struct arm_smmu_master *master,
++				 struct iommu_rmr *e)
++{
++	int i, j;
++
++	for (i = 0; i < master->num_sids; i++) {
++		for (j = 0; j < e->num_ids; j++) {
++			if (e->ids[j] == master->sids[i])
++				return true;
++		}
++	}
++
++	return false;
++}
++
++static void arm_smmu_rmr_get_resv_regions(struct device *dev,
++					  struct list_head *head)
++{
++	struct arm_smmu_master *master = dev_iommu_priv_get(dev);
++	struct arm_smmu_device *smmu = master->smmu;
++	struct iommu_rmr *rmr;
++
++	list_for_each_entry(rmr, &smmu->rmr_list, list) {
++		struct iommu_resv_region *region;
++		int prot = IOMMU_READ | IOMMU_WRITE | IOMMU_NOEXEC | IOMMU_MMIO;
++
++		if (!arm_smmu_dev_has_rmr(master, rmr))
++			continue;
++		region = iommu_alloc_resv_region(rmr->base_address,
++						 rmr->length, prot,
++						 IOMMU_RESV_DIRECT);
++		if (!region)
++			return;
++
++		list_add_tail(&region->list, head);
++	}
++}
+ static void arm_smmu_get_resv_regions(struct device *dev,
+ 				      struct list_head *head)
+ {
+@@ -2502,6 +2543,7 @@ static void arm_smmu_get_resv_regions(struct device *dev,
+ 	list_add_tail(&region->list, head);
+ 
+ 	iommu_dma_get_resv_regions(dev, head);
++	arm_smmu_rmr_get_resv_regions(dev, head);
+ }
+ 
+ static bool arm_smmu_dev_has_feature(struct device *dev,
+@@ -3482,6 +3524,42 @@ static void __iomem *arm_smmu_ioremap(struct device *dev, resource_size_t start,
+ 	return devm_ioremap_resource(dev, &res);
+ }
+ 
++static void arm_smmu_rmr_install_bypass_ste(struct arm_smmu_device *smmu)
++{
++	struct iommu_rmr *e;
++	int i, ret;
++
++	/*
++	 * Since, we don't have a mechanism to differentiate the RMR
++	 * SIDs that has an ongoing live stream, install bypass STEs
++	 * for all the reported ones. 
++	 * FixMe: Avoid duplicate SIDs in the list as one sid may
++	 *        associate with multiple RMRs.
++	 */
++	list_for_each_entry(e, &smmu->rmr_list, list) {
++		for (i = 0; i < e->num_ids; i++) {
++			__le64 *step;
++			u32 sid = e->ids[i];
++
++			ret = arm_smmu_init_sid_strtab(smmu, sid);
++			if (ret) {
++				dev_err(smmu->dev, "RMR bypass(0x%x) failed\n",
++					sid);
++				continue;
++			}
++
++			step = arm_smmu_get_step_for_sid(smmu, sid);
++			arm_smmu_write_strtab_ent(NULL, sid, step, true);
++		}
++	}
++}
++
++static int arm_smmu_get_rmr(struct arm_smmu_device *smmu)
++{
++	INIT_LIST_HEAD(&smmu->rmr_list);
++	return iommu_dma_get_rmrs(dev_fwnode(smmu->dev), &smmu->rmr_list);
++}
++
+ static int arm_smmu_device_probe(struct platform_device *pdev)
+ {
+ 	int irq, ret;
+@@ -3565,6 +3643,10 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
+ 	/* Record our private device structure */
+ 	platform_set_drvdata(pdev, smmu);
+ 
++	/* Check for RMRs and install bypass STEs if any */
++	if (!arm_smmu_get_rmr(smmu))
++		arm_smmu_rmr_install_bypass_ste(smmu);
++
+ 	/* Reset the device */
+ 	ret = arm_smmu_device_reset(smmu, bypass);
+ 	if (ret)
+diff --git a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h
+index d4b7f40ccb02..17b517ddecee 100644
+--- a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h
++++ b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h
+@@ -636,6 +636,8 @@ struct arm_smmu_device {
+ 
+ 	/* IOMMU core code handle */
+ 	struct iommu_device		iommu;
++
++	struct list_head		rmr_list;
+ };
+ 
+ /* SMMU private data for each master */
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu.c b/drivers/iommu/arm/arm-smmu/arm-smmu.c
+index bcbacf22331d..183960395579 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu.c
+@@ -1584,6 +1584,48 @@ static int arm_smmu_of_xlate(struct device *dev, struct of_phandle_args *args)
+ 	return iommu_fwspec_add_ids(dev, &fwid, 1);
+ }
+ 
++static bool arm_smmu_dev_has_rmr(struct arm_smmu_master_cfg *cfg,
++				 struct iommu_fwspec *fwspec,
++				 struct iommu_rmr *e)
++{
++	struct arm_smmu_device *smmu = cfg->smmu;
++	struct arm_smmu_smr *smrs = smmu->smrs;
++	int i, idx, j;
++
++	for_each_cfg_sme(cfg, fwspec, i, idx) {
++		for (j = 0; j < e->num_ids; j++) {
++			if (e->ids[j] == smrs[idx].id)
++				return true;
++		}
++	}
++
++	return false;
++}
++
++static void arm_smmu_rmr_get_resv_regions(struct device *dev,
++					  struct list_head *head)
++{
++	struct arm_smmu_master_cfg *cfg = dev_iommu_priv_get(dev);
++	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
++	struct arm_smmu_device *smmu = cfg->smmu;
++	struct iommu_rmr *rmr;
++
++	list_for_each_entry(rmr, &smmu->rmr_list, list) {
++		struct iommu_resv_region *region;
++		int prot = IOMMU_READ | IOMMU_WRITE | IOMMU_NOEXEC | IOMMU_MMIO;
++
++		if (!arm_smmu_dev_has_rmr(cfg, fwspec, rmr))
++			continue;
++		region = iommu_alloc_resv_region(rmr->base_address,
++						 rmr->length, prot,
++						 IOMMU_RESV_DIRECT);
++		if (!region)
++			return;
++
++		list_add_tail(&region->list, head);
++	}
++}
++
+ static void arm_smmu_get_resv_regions(struct device *dev,
+ 				      struct list_head *head)
+ {
+@@ -1598,6 +1640,7 @@ static void arm_smmu_get_resv_regions(struct device *dev,
+ 	list_add_tail(&region->list, head);
+ 
+ 	iommu_dma_get_resv_regions(dev, head);
++	arm_smmu_rmr_get_resv_regions(dev, head);
+ }
+ 
+ static int arm_smmu_def_domain_type(struct device *dev)
+@@ -2095,6 +2138,45 @@ err_reset_platform_ops: __maybe_unused;
+ 	return err;
+ }
+ 
++static void arm_smmu_rmr_install_bypass_smr(struct arm_smmu_device *smmu)
++{
++	struct iommu_rmr *e;
++	int i, j, cnt = 0;
++	u32 smr;
++
++	for (i = 0; i < smmu->num_mapping_groups; i++) {
++		smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(i));
++		if (!FIELD_GET(ARM_SMMU_SMR_VALID, smr))
++			continue;
++
++		list_for_each_entry(e, &smmu->rmr_list, list) {
++			for (j = 0; j < e->num_ids; j++) {
++				if (FIELD_GET(ARM_SMMU_SMR_ID, smr) != e->ids[j])
++					continue;
++
++				smmu->smrs[i].id = FIELD_GET(ARM_SMMU_SMR_ID, smr);
++				smmu->smrs[i].mask = FIELD_GET(ARM_SMMU_SMR_MASK, smr);
++				smmu->smrs[i].valid = true;
++
++				smmu->s2crs[i].type = S2CR_TYPE_BYPASS;
++				smmu->s2crs[i].privcfg = S2CR_PRIVCFG_DEFAULT;
++				smmu->s2crs[i].cbndx = 0xff;
++
++				cnt++;
++			}
++		}
++	}
++
++	dev_notice(smmu->dev, "\tpreserved %d boot mapping%s\n", cnt,
++		cnt == 1 ? "" : "s");
++}
++
++static int arm_smmu_get_rmr(struct arm_smmu_device *smmu)
++{
++	INIT_LIST_HEAD(&smmu->rmr_list);
++	return iommu_dma_get_rmrs(dev_fwnode(smmu->dev), &smmu->rmr_list);
++}
++
+ static int arm_smmu_device_probe(struct platform_device *pdev)
+ {
+ 	struct resource *res;
+@@ -2224,6 +2306,11 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	platform_set_drvdata(pdev, smmu);
++
++	/* Check for RMRs and install bypass SMRs if any */
++	if (!arm_smmu_get_rmr(smmu))
++		arm_smmu_rmr_install_bypass_smr(smmu);
++
+ 	arm_smmu_device_reset(smmu);
+ 	arm_smmu_test_smr_masks(smmu);
+ 
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu.h b/drivers/iommu/arm/arm-smmu/arm-smmu.h
+index b71647eaa319..a3c3442e7d4c 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu.h
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu.h
+@@ -325,6 +325,8 @@ struct arm_smmu_device {
+ 
+ 	/* IOMMU core code handle */
+ 	struct iommu_device		iommu;
++
++	struct list_head		rmr_list;
+ };
+ 
+ enum arm_smmu_context_fmt {
+diff --git a/drivers/iommu/dma-iommu.c b/drivers/iommu/dma-iommu.c
+index 0cbcd3fc3e7e..aa8304e50786 100644
+--- a/drivers/iommu/dma-iommu.c
++++ b/drivers/iommu/dma-iommu.c
+@@ -166,6 +166,45 @@ void iommu_dma_get_resv_regions(struct device *dev, struct list_head *list)
+ }
+ EXPORT_SYMBOL(iommu_dma_get_resv_regions);
+ 
++/**
++ * iommu_dma_get_rmrs - Retrieve Reserved Memory Regions(RMRs) associated
++ *                      with a given IOMMU
++ * @iommu_fwnode: fwnode associated with IOMMU
++ * @list: RMR list to be populated
++ *
++ */
++int iommu_dma_get_rmrs(struct fwnode_handle *iommu_fwnode,
++		       struct list_head *list)
++{
++	if (!is_of_node(iommu_fwnode))
++		return iort_iommu_get_rmrs(iommu_fwnode, list);
++
++	return 0;
++}
++EXPORT_SYMBOL(iommu_dma_get_rmrs);
++
++struct iommu_rmr *iommu_dma_alloc_rmr(u64 base, u64 length,
++				      u32 *ids, int num_ids)
++{
++	struct iommu_rmr *rmr;
++	int i;
++
++	rmr = kzalloc(struct_size(rmr, ids, num_ids), GFP_KERNEL);
++	if (!rmr)
++		return NULL;
++
++	INIT_LIST_HEAD(&rmr->list);
++	rmr->base_address = base;
++	rmr->length = length;
++	rmr->num_ids = num_ids;
++
++	for (i = 0; i < num_ids; i++)
++		rmr->ids[i] = ids[i];
++
++	return rmr;
++}
++EXPORT_SYMBOL(iommu_dma_alloc_rmr);
++
+ static int cookie_init_hw_msi_region(struct iommu_dma_cookie *cookie,
+ 		phys_addr_t start, phys_addr_t end)
+ {
+diff --git a/drivers/iommu/iommu.c b/drivers/iommu/iommu.c
+index 0d9adce6d812..a3b968fd0db0 100644
+--- a/drivers/iommu/iommu.c
++++ b/drivers/iommu/iommu.c
+@@ -845,7 +845,7 @@ int iommu_group_add_device(struct iommu_group *group, struct device *dev)
+ 
+ 	trace_add_device_to_group(group->id, dev);
+ 
+-	dev_info(dev, "Adding to iommu group %d\n", group->id);
++	dev_dbg(dev, "Adding to iommu group %d\n", group->id);
+ 
+ 	return 0;
+ 
+@@ -879,7 +879,7 @@ void iommu_group_remove_device(struct device *dev)
+ 	struct iommu_group *group = dev->iommu_group;
+ 	struct group_device *tmp_device, *device = NULL;
+ 
+-	dev_info(dev, "Removing from iommu group %d\n", group->id);
++	dev_dbg(dev, "Removing from iommu group %d\n", group->id);
+ 
+ 	/* Pre-notify listeners that a device is being removed. */
+ 	blocking_notifier_call_chain(&group->notifier,
+diff --git a/drivers/mmc/core/core.c b/drivers/mmc/core/core.c
+index d42037f0f10d..35649b95a860 100644
+--- a/drivers/mmc/core/core.c
++++ b/drivers/mmc/core/core.c
+@@ -6,6 +6,8 @@
+  *  SD support Copyright (C) 2004 Ian Molton, All Rights Reserved.
+  *  Copyright (C) 2005-2008 Pierre Ossman, All Rights Reserved.
+  *  MMCv4 support Copyright (C) 2006 Philip Langdale, All Rights Reserved.
++ *  Copyright 2020 NXP
++ *
+  */
+ #include <linux/module.h>
+ #include <linux/init.h>
+diff --git a/drivers/mmc/core/host.c b/drivers/mmc/core/host.c
+index 96b2ca1f1b06..7cea676d9c48 100644
+--- a/drivers/mmc/core/host.c
++++ b/drivers/mmc/core/host.c
+@@ -341,22 +341,31 @@ EXPORT_SYMBOL(mmc_of_parse);
+  * found, negative errno if the voltage-range specification is invalid,
+  * or one if the voltage-range is specified and successfully parsed.
+  */
+-int mmc_of_parse_voltage(struct device_node *np, u32 *mask)
++int mmc_of_parse_voltage(struct device *dev, u32 *mask)
+ {
+-	const u32 *voltage_ranges;
++	u32 *voltage_ranges;
+ 	int num_ranges, i;
+ 
+-	voltage_ranges = of_get_property(np, "voltage-ranges", &num_ranges);
+-	if (!voltage_ranges) {
+-		pr_debug("%pOF: voltage-ranges unspecified\n", np);
+-		return 0;
+-	}
+-	num_ranges = num_ranges / sizeof(*voltage_ranges) / 2;
++	num_ranges = device_property_read_u32_array(dev,
++						    "voltage-ranges", NULL, 0);
++
+ 	if (!num_ranges) {
+-		pr_err("%pOF: voltage-ranges empty\n", np);
++		pr_err("voltage-ranges empty\n");
+ 		return -EINVAL;
+ 	}
+ 
++	voltage_ranges = kcalloc(num_ranges, sizeof(u32), GFP_KERNEL);
++	if (!voltage_ranges)
++		return -ENOMEM;
++
++	device_property_read_u32_array(dev, "voltage-ranges",
++				       voltage_ranges, num_ranges);
++
++	if (!voltage_ranges) {
++		pr_debug("voltage-ranges unspecified\n");
++		return 0;
++	}
++
+ 	for (i = 0; i < num_ranges; i++) {
+ 		const int j = i * 2;
+ 		u32 ocr_mask;
+@@ -365,8 +374,7 @@ int mmc_of_parse_voltage(struct device_node *np, u32 *mask)
+ 				be32_to_cpu(voltage_ranges[j]),
+ 				be32_to_cpu(voltage_ranges[j + 1]));
+ 		if (!ocr_mask) {
+-			pr_err("%pOF: voltage-range #%d is invalid\n",
+-				np, i);
++			pr_err("voltage-range #%d is invalid\n", i);
+ 			return -EINVAL;
+ 		}
+ 		*mask |= ocr_mask;
+diff --git a/drivers/mmc/host/of_mmc_spi.c b/drivers/mmc/host/of_mmc_spi.c
+index 3c4d950a4755..3178554a9efc 100644
+--- a/drivers/mmc/host/of_mmc_spi.c
++++ b/drivers/mmc/host/of_mmc_spi.c
+@@ -65,7 +65,7 @@ struct mmc_spi_platform_data *mmc_spi_get_pdata(struct spi_device *spi)
+ 	if (!oms)
+ 		return NULL;
+ 
+-	if (mmc_of_parse_voltage(np, &oms->pdata.ocr_mask) <= 0)
++	if (mmc_of_parse_voltage(dev, &oms->pdata.ocr_mask) <= 0)
+ 		goto err_ocr;
+ 
+ 	oms->detect_irq = irq_of_parse_and_map(np, 0);
+diff --git a/drivers/mmc/host/sdhci-esdhc-imx.c b/drivers/mmc/host/sdhci-esdhc-imx.c
+index 5d9b3106d2f7..4b846f5741ad 100644
+--- a/drivers/mmc/host/sdhci-esdhc-imx.c
++++ b/drivers/mmc/host/sdhci-esdhc-imx.c
+@@ -1502,7 +1502,7 @@ sdhci_esdhc_imx_probe_dt(struct platform_device *pdev,
+ 	if (of_property_read_u32(np, "fsl,delay-line", &boarddata->delay_line))
+ 		boarddata->delay_line = 0;
+ 
+-	mmc_of_parse_voltage(np, &host->ocr_mask);
++	mmc_of_parse_voltage(&pdev->dev, &host->ocr_mask);
+ 
+ 	if (esdhc_is_usdhc(imx_data)) {
+ 		imx_data->pins_100mhz = pinctrl_lookup_state(imx_data->pinctrl,
+diff --git a/drivers/mmc/host/sdhci-of-esdhc.c b/drivers/mmc/host/sdhci-of-esdhc.c
+index ab5ab969f711..bb7e456ad17b 100644
+--- a/drivers/mmc/host/sdhci-of-esdhc.c
++++ b/drivers/mmc/host/sdhci-of-esdhc.c
+@@ -10,6 +10,7 @@
+  *	    Anton Vorontsov <avorontsov@ru.mvista.com>
+  */
+ 
++#include <linux/acpi.h>
+ #include <linux/err.h>
+ #include <linux/io.h>
+ #include <linux/of.h>
+@@ -73,6 +74,14 @@ static const struct of_device_id sdhci_esdhc_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, sdhci_esdhc_of_match);
+ 
++#ifdef CONFIG_ACPI
++static const struct acpi_device_id sdhci_esdhc_ids[] = {
++	{"NXP0003" },
++	{ }
++};
++MODULE_DEVICE_TABLE(acpi, sdhci_esdhc_ids);
++#endif
++
+ struct sdhci_esdhc {
+ 	u8 vendor_ver;
+ 	u8 spec_ver;
+@@ -532,8 +541,11 @@ static int esdhc_of_enable_dma(struct sdhci_host *host)
+ 		dma_set_mask_and_coherent(dev, DMA_BIT_MASK(40));
+ 
+ 	value = sdhci_readl(host, ESDHC_DMA_SYSCTL);
+-
+-	if (of_dma_is_coherent(dev->of_node))
++	/*
++	 * of_dma_is_coherent() returns false in case of acpi hence
++	 * dev_dma_is_coherent() is used along with it.
++	 */
++	if (of_dma_is_coherent(dev->of_node) ||  dev_dma_is_coherent(dev))
+ 		value |= ESDHC_DMA_SNOOP;
+ 	else
+ 		value &= ~ESDHC_DMA_SNOOP;
+@@ -1366,29 +1378,35 @@ static void esdhc_init(struct platform_device *pdev, struct sdhci_host *host)
+ 		esdhc->clk_fixup = match->data;
+ 	np = pdev->dev.of_node;
+ 
+-	if (of_device_is_compatible(np, "fsl,p2020-esdhc")) {
+-		esdhc->quirk_delay_before_data_reset = true;
+-		esdhc->quirk_trans_complete_erratum = true;
+-	}
++	/* in case of device tree, get clock from framework */
++	if (np) {
++		if (of_device_is_compatible(np, "fsl,p2020-esdhc")) {
++			esdhc->quirk_delay_before_data_reset = true;
++			esdhc->quirk_trans_complete_erratum = true;
++		}
+ 
+-	clk = of_clk_get(np, 0);
+-	if (!IS_ERR(clk)) {
+-		/*
+-		 * esdhc->peripheral_clock would be assigned with a value
+-		 * which is eSDHC base clock when use periperal clock.
+-		 * For some platforms, the clock value got by common clk
+-		 * API is peripheral clock while the eSDHC base clock is
+-		 * 1/2 peripheral clock.
+-		 */
+-		if (of_device_is_compatible(np, "fsl,ls1046a-esdhc") ||
+-		    of_device_is_compatible(np, "fsl,ls1028a-esdhc") ||
+-		    of_device_is_compatible(np, "fsl,ls1088a-esdhc"))
+-			esdhc->peripheral_clock = clk_get_rate(clk) / 2;
+-		else
+-			esdhc->peripheral_clock = clk_get_rate(clk);
+-
+-		clk_put(clk);
+-	}
++		clk = of_clk_get(np, 0);
++		if (!IS_ERR(clk)) {
++			/*
++			 * esdhc->peripheral_clock would be assigned with a value
++			 * which is eSDHC base clock when use periperal clock.
++			 * For some platforms, the clock value got by common clk
++			 * API is peripheral clock while the eSDHC base clock is
++			 * 1/2 peripheral clock.
++			 */
++			if (of_device_is_compatible(np, "fsl,ls1046a-esdhc") ||
++			    of_device_is_compatible(np, "fsl,ls1028a-esdhc") ||
++			    of_device_is_compatible(np, "fsl,ls1088a-esdhc"))
++				esdhc->peripheral_clock = clk_get_rate(clk) / 2;
++			else
++				esdhc->peripheral_clock = clk_get_rate(clk);
++
++			clk_put(clk);
++		}
++	} else {
++		device_property_read_u32(&pdev->dev, "clock-frequency",
++					 &esdhc->peripheral_clock);
++        }
+ 
+ 	esdhc_clock_enable(host, false);
+ 	val = sdhci_readl(host, ESDHC_DMA_SYSCTL);
+@@ -1421,7 +1439,7 @@ static int sdhci_esdhc_probe(struct platform_device *pdev)
+ 
+ 	np = pdev->dev.of_node;
+ 
+-	if (of_property_read_bool(np, "little-endian"))
++	if (device_property_read_bool(&pdev->dev, "little-endian"))
+ 		host = sdhci_pltfm_init(pdev, &sdhci_esdhc_le_pdata,
+ 					sizeof(struct sdhci_esdhc));
+ 	else
+@@ -1489,7 +1507,7 @@ static int sdhci_esdhc_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto err;
+ 
+-	mmc_of_parse_voltage(np, &host->ocr_mask);
++	mmc_of_parse_voltage(&pdev->dev, &host->ocr_mask);
+ 
+ 	ret = sdhci_add_host(host);
+ 	if (ret)
+@@ -1506,6 +1524,7 @@ static struct platform_driver sdhci_esdhc_driver = {
+ 		.name = "sdhci-esdhc",
+ 		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
+ 		.of_match_table = sdhci_esdhc_of_match,
++		.acpi_match_table = sdhci_esdhc_ids,
+ 		.pm = &esdhc_of_dev_pm_ops,
+ 	},
+ 	.probe = sdhci_esdhc_probe,
+diff --git a/drivers/mmc/host/sdhci-pltfm.c b/drivers/mmc/host/sdhci-pltfm.c
+index 328b132bbe57..5053544edf48 100644
+--- a/drivers/mmc/host/sdhci-pltfm.c
++++ b/drivers/mmc/host/sdhci-pltfm.c
+@@ -5,6 +5,7 @@
+  *
+  * Copyright (c) 2007, 2011 Freescale Semiconductor, Inc.
+  * Copyright (c) 2009 MontaVista Software, Inc.
++ * Copyright 2020 NXP
+  *
+  * Authors: Xiaobo Xie <X.Xie@freescale.com>
+  *	    Anton Vorontsov <avorontsov@ru.mvista.com>
+diff --git a/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.c b/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.c
+index f91c67489e62..a63c35abf96b 100644
+--- a/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.c
++++ b/drivers/net/ethernet/freescale/dpaa2/dpaa2-eth.c
+@@ -4066,15 +4066,24 @@ static int dpaa2_eth_connect_mac(struct dpaa2_eth_priv *priv)
+ 	mac->mc_io = priv->mc_io;
+ 	mac->net_dev = priv->net_dev;
+ 
++	err = dpaa2_mac_open(mac);
++	if (err)
++		goto err_free_mac;
++
+ 	err = dpaa2_mac_connect(mac);
+ 	if (err) {
+ 		netdev_err(priv->net_dev, "Error connecting to the MAC endpoint\n");
+-		kfree(mac);
+-		return err;
++		goto err_close_mac;
+ 	}
+ 	priv->mac = mac;
+ 
+ 	return 0;
++
++err_close_mac:
++	dpaa2_mac_close(mac);
++err_free_mac:
++	kfree(mac);
++	return err;
+ }
+ 
+ static void dpaa2_eth_disconnect_mac(struct dpaa2_eth_priv *priv)
+@@ -4083,6 +4092,7 @@ static void dpaa2_eth_disconnect_mac(struct dpaa2_eth_priv *priv)
+ 		return;
+ 
+ 	dpaa2_mac_disconnect(priv->mac);
++	dpaa2_mac_close(priv->mac);
+ 	kfree(priv->mac);
+ 	priv->mac = NULL;
+ }
+@@ -4110,12 +4120,10 @@ static irqreturn_t dpni_irq0_handler_thread(int irq_num, void *arg)
+ 		dpaa2_eth_set_mac_addr(netdev_priv(net_dev));
+ 		dpaa2_eth_update_tx_fqids(priv);
+ 
+-		rtnl_lock();
+ 		if (priv->mac)
+ 			dpaa2_eth_disconnect_mac(priv);
+ 		else
+ 			dpaa2_eth_connect_mac(priv);
+-		rtnl_unlock();
+ 	}
+ 
+ 	return IRQ_HANDLED;
+@@ -4405,9 +4413,7 @@ static int dpaa2_eth_remove(struct fsl_mc_device *ls_dev)
+ #ifdef CONFIG_DEBUG_FS
+ 	dpaa2_dbg_remove(priv);
+ #endif
+-	rtnl_lock();
+ 	dpaa2_eth_disconnect_mac(priv);
+-	rtnl_unlock();
+ 
+ 	unregister_netdev(net_dev);
+ 
+diff --git a/drivers/net/ethernet/freescale/dpaa2/dpaa2-mac.c b/drivers/net/ethernet/freescale/dpaa2/dpaa2-mac.c
+index 828c177df03d..31222b2305da 100644
+--- a/drivers/net/ethernet/freescale/dpaa2/dpaa2-mac.c
++++ b/drivers/net/ethernet/freescale/dpaa2/dpaa2-mac.c
+@@ -1,6 +1,9 @@
+ // SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
+ /* Copyright 2019 NXP */
+ 
++#include <linux/acpi.h>
++#include <linux/property.h>
++
+ #include "dpaa2-eth.h"
+ #include "dpaa2-mac.h"
+ 
+@@ -34,39 +37,51 @@ static int phy_mode(enum dpmac_eth_if eth_if, phy_interface_t *if_mode)
+ 	return 0;
+ }
+ 
+-/* Caller must call of_node_put on the returned value */
+-static struct device_node *dpaa2_mac_get_node(u16 dpmac_id)
++static struct fwnode_handle *dpaa2_mac_get_node(struct device *dev,
++						u16 dpmac_id)
+ {
+-	struct device_node *dpmacs, *dpmac = NULL;
+-	u32 id;
++	struct fwnode_handle *fwnode, *parent, *child  = NULL;
++	struct device_node *dpmacs = NULL;
+ 	int err;
++	u32 id;
+ 
+-	dpmacs = of_find_node_by_name(NULL, "dpmacs");
+-	if (!dpmacs)
+-		return NULL;
++	fwnode = dev_fwnode(dev->parent);
++	if (is_of_node(fwnode)) {
++		dpmacs = of_find_node_by_name(NULL, "dpmacs");
++		if (!dpmacs)
++			return NULL;
++		parent = of_fwnode_handle(dpmacs);
++	} else if (is_acpi_node(fwnode)) {
++		parent = fwnode;
++	}
+ 
+-	while ((dpmac = of_get_next_child(dpmacs, dpmac)) != NULL) {
+-		err = of_property_read_u32(dpmac, "reg", &id);
++	fwnode_for_each_child_node(parent, child) {
++		err = -EINVAL;
++		if (is_acpi_device_node(child))
++			err = acpi_get_local_address(ACPI_HANDLE_FWNODE(child), &id);
++		else if (is_of_node(child))
++			err = of_property_read_u32(to_of_node(child), "reg", &id);
+ 		if (err)
+ 			continue;
+-		if (id == dpmac_id)
+-			break;
+-	}
+ 
++		if (id == dpmac_id) {
++			of_node_put(dpmacs);
++			return child;
++		}
++	}
+ 	of_node_put(dpmacs);
+-
+-	return dpmac;
++	return NULL;
+ }
+ 
+-static int dpaa2_mac_get_if_mode(struct device_node *node,
++static int dpaa2_mac_get_if_mode(struct fwnode_handle *dpmac_node,
+ 				 struct dpmac_attr attr)
+ {
+ 	phy_interface_t if_mode;
+ 	int err;
+ 
+-	err = of_get_phy_mode(node, &if_mode);
+-	if (!err)
+-		return if_mode;
++	err = fwnode_get_phy_mode(dpmac_node);
++	if (err > 0)
++		return err;
+ 
+ 	err = phy_mode(attr.eth_if, &if_mode);
+ 	if (!err)
+@@ -79,10 +94,20 @@ static bool dpaa2_mac_phy_mode_mismatch(struct dpaa2_mac *mac,
+ 					phy_interface_t interface)
+ {
+ 	switch (interface) {
++	/* We can switch between SGMII and 1000BASE-X at runtime with
++	 * pcs-lynx
++	 */
++	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_1000BASEX:
++		if (mac->pcs &&
++		    (mac->if_mode == PHY_INTERFACE_MODE_SGMII ||
++		     mac->if_mode == PHY_INTERFACE_MODE_1000BASEX))
++			return false;
++		return interface != mac->if_mode;
++
+ 	case PHY_INTERFACE_MODE_10GBASER:
+ 	case PHY_INTERFACE_MODE_USXGMII:
+ 	case PHY_INTERFACE_MODE_QSGMII:
+-	case PHY_INTERFACE_MODE_SGMII:
+ 	case PHY_INTERFACE_MODE_RGMII:
+ 	case PHY_INTERFACE_MODE_RGMII_ID:
+ 	case PHY_INTERFACE_MODE_RGMII_RXID:
+@@ -115,6 +140,12 @@ static void dpaa2_mac_validate(struct phylink_config *config,
+ 	case PHY_INTERFACE_MODE_10GBASER:
+ 	case PHY_INTERFACE_MODE_USXGMII:
+ 		phylink_set(mask, 10000baseT_Full);
++		phylink_set(mask, 10000baseKR_Full);
++		phylink_set(mask, 10000baseCR_Full);
++		phylink_set(mask, 10000baseSR_Full);
++		phylink_set(mask, 10000baseLR_Full);
++		phylink_set(mask, 10000baseLRM_Full);
++		phylink_set(mask, 10000baseER_Full);
+ 		if (state->interface == PHY_INTERFACE_MODE_10GBASER)
+ 			break;
+ 		phylink_set(mask, 5000baseT_Full);
+@@ -122,13 +153,17 @@ static void dpaa2_mac_validate(struct phylink_config *config,
+ 		fallthrough;
+ 	case PHY_INTERFACE_MODE_SGMII:
+ 	case PHY_INTERFACE_MODE_QSGMII:
++	case PHY_INTERFACE_MODE_1000BASEX:
+ 	case PHY_INTERFACE_MODE_RGMII:
+ 	case PHY_INTERFACE_MODE_RGMII_ID:
+ 	case PHY_INTERFACE_MODE_RGMII_RXID:
+ 	case PHY_INTERFACE_MODE_RGMII_TXID:
+-		phylink_set(mask, 10baseT_Full);
+-		phylink_set(mask, 100baseT_Full);
++		phylink_set(mask, 1000baseX_Full);
+ 		phylink_set(mask, 1000baseT_Full);
++		if (state->interface == PHY_INTERFACE_MODE_1000BASEX)
++			break;
++		phylink_set(mask, 100baseT_Full);
++		phylink_set(mask, 10baseT_Full);
+ 		break;
+ 	default:
+ 		goto empty_set;
+@@ -255,26 +290,27 @@ bool dpaa2_mac_is_type_fixed(struct fsl_mc_device *dpmac_dev,
+ }
+ 
+ static int dpaa2_pcs_create(struct dpaa2_mac *mac,
+-			    struct device_node *dpmac_node, int id)
++			    struct fwnode_handle *dpmac_node,
++			    int id)
+ {
+ 	struct mdio_device *mdiodev;
+-	struct device_node *node;
++	struct fwnode_handle *node;
+ 
+-	node = of_parse_phandle(dpmac_node, "pcs-handle", 0);
+-	if (!node) {
++	node = fwnode_find_reference(dpmac_node, "pcs-handle", 0);
++	if (IS_ERR(node)) {
+ 		/* do not error out on old DTS files */
+ 		netdev_warn(mac->net_dev, "pcs-handle node not found\n");
+ 		return 0;
+ 	}
+ 
+-	if (!of_device_is_available(node)) {
++	if (!fwnode_device_is_available(node)) {
+ 		netdev_err(mac->net_dev, "pcs-handle node not available\n");
+-		of_node_put(node);
++		fwnode_handle_put(node);
+ 		return -ENODEV;
+ 	}
+ 
+-	mdiodev = of_mdio_find_device(node);
+-	of_node_put(node);
++	mdiodev = fwnode_mdio_find_device(node);
++	fwnode_handle_put(node);
+ 	if (!mdiodev)
+ 		return -EPROBE_DEFER;
+ 
+@@ -302,36 +338,20 @@ static void dpaa2_pcs_destroy(struct dpaa2_mac *mac)
+ 
+ int dpaa2_mac_connect(struct dpaa2_mac *mac)
+ {
+-	struct fsl_mc_device *dpmac_dev = mac->mc_dev;
+ 	struct net_device *net_dev = mac->net_dev;
+-	struct device_node *dpmac_node;
++	struct fwnode_handle *dpmac_node = NULL;
+ 	struct phylink *phylink;
+-	struct dpmac_attr attr;
+ 	int err;
+ 
+-	err = dpmac_open(mac->mc_io, 0, dpmac_dev->obj_desc.id,
+-			 &dpmac_dev->mc_handle);
+-	if (err || !dpmac_dev->mc_handle) {
+-		netdev_err(net_dev, "dpmac_open() = %d\n", err);
+-		return -ENODEV;
+-	}
+-
+-	err = dpmac_get_attributes(mac->mc_io, 0, dpmac_dev->mc_handle, &attr);
+-	if (err) {
+-		netdev_err(net_dev, "dpmac_get_attributes() = %d\n", err);
+-		goto err_close_dpmac;
+-	}
+-
+-	mac->if_link_type = attr.link_type;
++	mac->if_link_type = mac->attr.link_type;
+ 
+-	dpmac_node = dpaa2_mac_get_node(attr.id);
++	dpmac_node = dpaa2_mac_get_node(&mac->mc_dev->dev, mac->attr.id);
+ 	if (!dpmac_node) {
+-		netdev_err(net_dev, "No dpmac@%d node found.\n", attr.id);
+-		err = -ENODEV;
+-		goto err_close_dpmac;
++		netdev_err(net_dev, "No dpmac@%d node found.\n", mac->attr.id);
++		return -ENODEV;
+ 	}
+ 
+-	err = dpaa2_mac_get_if_mode(dpmac_node, attr);
++	err = dpaa2_mac_get_if_mode(dpmac_node, mac->attr);
+ 	if (err < 0) {
+ 		err = -EINVAL;
+ 		goto err_put_node;
+@@ -342,7 +362,7 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
+ 	 * error out if the interface mode requests them and there is no PHY
+ 	 * to act upon them
+ 	 */
+-	if (of_phy_is_fixed_link(dpmac_node) &&
++	if (of_phy_is_fixed_link(to_of_node(dpmac_node)) &&
+ 	    (mac->if_mode == PHY_INTERFACE_MODE_RGMII_ID ||
+ 	     mac->if_mode == PHY_INTERFACE_MODE_RGMII_RXID ||
+ 	     mac->if_mode == PHY_INTERFACE_MODE_RGMII_TXID)) {
+@@ -351,9 +371,10 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
+ 		goto err_put_node;
+ 	}
+ 
+-	if (attr.link_type == DPMAC_LINK_TYPE_PHY &&
+-	    attr.eth_if != DPMAC_ETH_IF_RGMII) {
+-		err = dpaa2_pcs_create(mac, dpmac_node, attr.id);
++	if ((mac->attr.link_type == DPMAC_LINK_TYPE_PHY &&
++	    mac->attr.eth_if != DPMAC_ETH_IF_RGMII) ||
++	    mac->attr.link_type == DPMAC_LINK_TYPE_BACKPLANE) {
++		err = dpaa2_pcs_create(mac, dpmac_node, mac->attr.id);
+ 		if (err)
+ 			goto err_put_node;
+ 	}
+@@ -362,7 +383,7 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
+ 	mac->phylink_config.type = PHYLINK_NETDEV;
+ 
+ 	phylink = phylink_create(&mac->phylink_config,
+-				 of_fwnode_handle(dpmac_node), mac->if_mode,
++				 dpmac_node, mac->if_mode,
+ 				 &dpaa2_mac_phylink_ops);
+ 	if (IS_ERR(phylink)) {
+ 		err = PTR_ERR(phylink);
+@@ -373,13 +394,15 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
+ 	if (mac->pcs)
+ 		phylink_set_pcs(mac->phylink, &mac->pcs->pcs);
+ 
+-	err = phylink_of_phy_connect(mac->phylink, dpmac_node, 0);
++	rtnl_lock();
++	err = phylink_fwnode_phy_connect(mac->phylink, dpmac_node, 0);
++	rtnl_unlock();
+ 	if (err) {
+-		netdev_err(net_dev, "phylink_of_phy_connect() = %d\n", err);
++		netdev_err(net_dev, "phylink_fwnode_phy_connect() = %d\n", err);
+ 		goto err_phylink_destroy;
+ 	}
+ 
+-	of_node_put(dpmac_node);
++	fwnode_handle_put(dpmac_node);
+ 
+ 	return 0;
+ 
+@@ -388,9 +411,8 @@ int dpaa2_mac_connect(struct dpaa2_mac *mac)
+ err_pcs_destroy:
+ 	dpaa2_pcs_destroy(mac);
+ err_put_node:
+-	of_node_put(dpmac_node);
+-err_close_dpmac:
+-	dpmac_close(mac->mc_io, 0, dpmac_dev->mc_handle);
++	fwnode_handle_put(dpmac_node);
++
+ 	return err;
+ }
+ 
+@@ -399,11 +421,45 @@ void dpaa2_mac_disconnect(struct dpaa2_mac *mac)
+ 	if (!mac->phylink)
+ 		return;
+ 
++	rtnl_lock();
+ 	phylink_disconnect_phy(mac->phylink);
++	rtnl_unlock();
+ 	phylink_destroy(mac->phylink);
+ 	dpaa2_pcs_destroy(mac);
++}
++
++int dpaa2_mac_open(struct dpaa2_mac *mac)
++{
++	struct fsl_mc_device *dpmac_dev = mac->mc_dev;
++	struct net_device *net_dev = mac->net_dev;
++	int err;
++
++	err = dpmac_open(mac->mc_io, 0, dpmac_dev->obj_desc.id,
++			 &dpmac_dev->mc_handle);
++	if (err || !dpmac_dev->mc_handle) {
++		netdev_err(net_dev, "dpmac_open() = %d\n", err);
++		return -ENODEV;
++	}
+ 
+-	dpmac_close(mac->mc_io, 0, mac->mc_dev->mc_handle);
++	err = dpmac_get_attributes(mac->mc_io, 0, dpmac_dev->mc_handle,
++				   &mac->attr);
++	if (err) {
++		netdev_err(net_dev, "dpmac_get_attributes() = %d\n", err);
++		goto err_close_dpmac;
++	}
++
++	return 0;
++
++err_close_dpmac:
++	dpmac_close(mac->mc_io, 0, dpmac_dev->mc_handle);
++	return err;
++}
++
++void dpaa2_mac_close(struct dpaa2_mac *mac)
++{
++	struct fsl_mc_device *dpmac_dev = mac->mc_dev;
++
++	dpmac_close(mac->mc_io, 0, dpmac_dev->mc_handle);
+ }
+ 
+ static char dpaa2_mac_ethtool_stats[][ETH_GSTRING_LEN] = {
+diff --git a/drivers/net/ethernet/freescale/dpaa2/dpaa2-mac.h b/drivers/net/ethernet/freescale/dpaa2/dpaa2-mac.h
+index 955a52856210..13d42dd58ec9 100644
+--- a/drivers/net/ethernet/freescale/dpaa2/dpaa2-mac.h
++++ b/drivers/net/ethernet/freescale/dpaa2/dpaa2-mac.h
+@@ -17,6 +17,7 @@ struct dpaa2_mac {
+ 	struct dpmac_link_state state;
+ 	struct net_device *net_dev;
+ 	struct fsl_mc_io *mc_io;
++	struct dpmac_attr attr;
+ 
+ 	struct phylink_config phylink_config;
+ 	struct phylink *phylink;
+@@ -28,6 +29,10 @@ struct dpaa2_mac {
+ bool dpaa2_mac_is_type_fixed(struct fsl_mc_device *dpmac_dev,
+ 			     struct fsl_mc_io *mc_io);
+ 
++int dpaa2_mac_open(struct dpaa2_mac *mac);
++
++void dpaa2_mac_close(struct dpaa2_mac *mac);
++
+ int dpaa2_mac_connect(struct dpaa2_mac *mac);
+ 
+ void dpaa2_mac_disconnect(struct dpaa2_mac *mac);
+diff --git a/drivers/net/ethernet/freescale/xgmac_mdio.c b/drivers/net/ethernet/freescale/xgmac_mdio.c
+index bfa2826c5545..6daf1fb2e9ea 100644
+--- a/drivers/net/ethernet/freescale/xgmac_mdio.c
++++ b/drivers/net/ethernet/freescale/xgmac_mdio.c
+@@ -2,6 +2,7 @@
+  * QorIQ 10G MDIO Controller
+  *
+  * Copyright 2012 Freescale Semiconductor, Inc.
++ * Copyright 2021 NXP
+  *
+  * Authors: Andy Fleming <afleming@freescale.com>
+  *          Timur Tabi <timur@freescale.com>
+@@ -11,15 +12,16 @@
+  * kind, whether express or implied.
+  */
+ 
+-#include <linux/kernel.h>
+-#include <linux/slab.h>
++#include <linux/fwnode_mdio.h>
+ #include <linux/interrupt.h>
+-#include <linux/module.h>
+-#include <linux/phy.h>
++#include <linux/kernel.h>
+ #include <linux/mdio.h>
++#include <linux/module.h>
+ #include <linux/of_address.h>
+-#include <linux/of_platform.h>
+ #include <linux/of_mdio.h>
++#include <linux/of_platform.h>
++#include <linux/phy.h>
++#include <linux/slab.h>
+ 
+ /* Number of microseconds to wait for a register to respond */
+ #define TIMEOUT	1000
+@@ -243,10 +245,9 @@ static int xgmac_mdio_read(struct mii_bus *bus, int phy_id, int regnum)
+ 
+ static int xgmac_mdio_probe(struct platform_device *pdev)
+ {
+-	struct device_node *np = pdev->dev.of_node;
+-	struct mii_bus *bus;
+-	struct resource *res;
+ 	struct mdio_fsl_priv *priv;
++	struct resource *res;
++	struct mii_bus *bus;
+ 	int ret;
+ 
+ 	/* In DPAA-1, MDIO is one of the many FMan sub-devices. The FMan
+@@ -279,13 +280,16 @@ static int xgmac_mdio_probe(struct platform_device *pdev)
+ 		goto err_ioremap;
+ 	}
+ 
++	/* For both ACPI and DT cases, endianness of MDIO controller
++	 * needs to be specified using "little-endian" property.
++	 */
+ 	priv->is_little_endian = device_property_read_bool(&pdev->dev,
+ 							   "little-endian");
+ 
+ 	priv->has_a011043 = device_property_read_bool(&pdev->dev,
+ 						      "fsl,erratum-a011043");
+ 
+-	ret = of_mdiobus_register(bus, np);
++	ret = fwnode_mdiobus_register(bus, pdev->dev.fwnode);
+ 	if (ret) {
+ 		dev_err(&pdev->dev, "cannot register MDIO bus\n");
+ 		goto err_registration;
+diff --git a/drivers/net/mdio/Kconfig b/drivers/net/mdio/Kconfig
+index a10cc460d7cf..fc8c787b448f 100644
+--- a/drivers/net/mdio/Kconfig
++++ b/drivers/net/mdio/Kconfig
+@@ -19,6 +19,15 @@ config MDIO_BUS
+ 	  reflects whether the mdio_bus/mdio_device code is built as a
+ 	  loadable module or built-in.
+ 
++config FWNODE_MDIO
++	def_tristate PHYLIB
++	depends on ACPI
++	depends on OF
++	depends on PHYLIB
++	select FIXED_PHY
++	help
++	  FWNODE MDIO bus (Ethernet PHY) accessors
++
+ config OF_MDIO
+ 	def_tristate PHYLIB
+ 	depends on OF
+@@ -27,6 +36,13 @@ config OF_MDIO
+ 	help
+ 	  OpenFirmware MDIO bus (Ethernet PHY) accessors
+ 
++config ACPI_MDIO
++	def_tristate PHYLIB
++	depends on ACPI
++	depends on PHYLIB
++	help
++	  ACPI MDIO bus (Ethernet PHY) accessors
++
+ if MDIO_BUS
+ 
+ config MDIO_DEVRES
+diff --git a/drivers/net/mdio/Makefile b/drivers/net/mdio/Makefile
+index 5c498dde463f..e8b739a3df1c 100644
+--- a/drivers/net/mdio/Makefile
++++ b/drivers/net/mdio/Makefile
+@@ -1,7 +1,9 @@
+ # SPDX-License-Identifier: GPL-2.0
+ # Makefile for Linux MDIO bus drivers
+ 
+-obj-$(CONFIG_OF_MDIO)	+= of_mdio.o
++obj-$(CONFIG_ACPI_MDIO)		+= acpi_mdio.o
++obj-$(CONFIG_FWNODE_MDIO)	+= fwnode_mdio.o
++obj-$(CONFIG_OF_MDIO)		+= of_mdio.o
+ 
+ obj-$(CONFIG_MDIO_ASPEED)		+= mdio-aspeed.o
+ obj-$(CONFIG_MDIO_BCM_IPROC)		+= mdio-bcm-iproc.o
+diff --git a/drivers/net/mdio/acpi_mdio.c b/drivers/net/mdio/acpi_mdio.c
+new file mode 100644
+index 000000000000..60a86e3fc246
+--- /dev/null
++++ b/drivers/net/mdio/acpi_mdio.c
+@@ -0,0 +1,56 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * ACPI helpers for the MDIO (Ethernet PHY) API
++ *
++ * This file provides helper functions for extracting PHY device information
++ * out of the ACPI ASL and using it to populate an mii_bus.
++ */
++
++#include <linux/acpi.h>
++#include <linux/acpi_mdio.h>
++#include <linux/bits.h>
++#include <linux/dev_printk.h>
++#include <linux/fwnode_mdio.h>
++#include <linux/module.h>
++#include <linux/types.h>
++
++MODULE_AUTHOR("Calvin Johnson <calvin.johnson@oss.nxp.com>");
++MODULE_LICENSE("GPL");
++
++/**
++ * acpi_mdiobus_register - Register mii_bus and create PHYs from the ACPI ASL.
++ * @mdio: pointer to mii_bus structure
++ * @fwnode: pointer to fwnode of MDIO bus.
++ *
++ * This function registers the mii_bus structure and registers a phy_device
++ * for each child node of @fwnode.
++ */
++int acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode)
++{
++	struct fwnode_handle *child;
++	u32 addr;
++	int ret;
++
++	/* Mask out all PHYs from auto probing. */
++	mdio->phy_mask = GENMASK(31, 0);
++	ret = mdiobus_register(mdio);
++	if (ret)
++		return ret;
++
++	ACPI_COMPANION_SET(&mdio->dev, to_acpi_device_node(fwnode));
++
++	/* Loop over the child nodes and register a phy_device for each PHY */
++	fwnode_for_each_child_node(fwnode, child) {
++		ret = acpi_get_local_address(ACPI_HANDLE_FWNODE(child), &addr);
++		if (ret || addr >= PHY_MAX_ADDR)
++			continue;
++
++		ret = fwnode_mdiobus_register_phy(mdio, child, addr);
++		if (ret == -ENODEV)
++			dev_err(&mdio->dev,
++				"MDIO device at address %d is missing.\n",
++				addr);
++	}
++	return 0;
++}
++EXPORT_SYMBOL(acpi_mdiobus_register);
+diff --git a/drivers/net/mdio/fwnode_mdio.c b/drivers/net/mdio/fwnode_mdio.c
+new file mode 100644
+index 000000000000..523c2778b287
+--- /dev/null
++++ b/drivers/net/mdio/fwnode_mdio.c
+@@ -0,0 +1,98 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * fwnode helpers for the MDIO (Ethernet PHY) API
++ *
++ * This file provides helper functions for extracting PHY device information
++ * out of the fwnode and using it to populate an mii_bus.
++ */
++
++#include <linux/acpi.h>
++#include <linux/acpi_mdio.h>
++#include <linux/of.h>
++#include <linux/of_mdio.h>
++#include <linux/phy.h>
++
++MODULE_AUTHOR("Calvin Johnson <calvin.johnson@oss.nxp.com>");
++MODULE_LICENSE("GPL");
++
++int fwnode_mdiobus_register_phy(struct mii_bus *bus,
++				struct fwnode_handle *child, u32 addr)
++{
++	struct mii_timestamper *mii_ts = NULL;
++	struct phy_device *phy;
++	bool is_c45 = false;
++	u32 phy_id;
++	int rc;
++
++	if (is_of_node(child)) {
++		mii_ts = of_find_mii_timestamper(to_of_node(child));
++		if (IS_ERR(mii_ts))
++			return PTR_ERR(mii_ts);
++	}
++
++	rc = fwnode_property_match_string(child, "compatible", "ethernet-phy-ieee802.3-c45");
++	if (rc >= 0)
++		is_c45 = true;
++
++	if (is_c45 || fwnode_get_phy_id(child, &phy_id))
++		phy = get_phy_device(bus, addr, is_c45);
++	else
++		phy = phy_device_create(bus, addr, phy_id, 0, NULL);
++	if (IS_ERR(phy)) {
++		unregister_mii_timestamper(mii_ts);
++		return PTR_ERR(phy);
++	}
++
++	if (is_acpi_node(child)) {
++		phy->irq = bus->irq[addr];
++
++		/* Associate the fwnode with the device structure so it
++		 * can be looked up later.
++		 */
++		phy->mdio.dev.fwnode = child;
++
++		/* All data is now stored in the phy struct, so register it */
++		rc = phy_device_register(phy);
++		if (rc) {
++			phy_device_free(phy);
++			fwnode_handle_put(phy->mdio.dev.fwnode);
++			return rc;
++		}
++	} else if (is_of_node(child)) {
++		rc = of_mdiobus_phy_device_register(bus, phy, to_of_node(child), addr);
++		if (rc) {
++			unregister_mii_timestamper(mii_ts);
++			phy_device_free(phy);
++			return rc;
++		}
++	}
++
++	/* phy->mii_ts may already be defined by the PHY driver. A
++	 * mii_timestamper probed via the device tree will still have
++	 * precedence.
++	 */
++	if (mii_ts)
++		phy->mii_ts = mii_ts;
++	return 0;
++}
++EXPORT_SYMBOL(fwnode_mdiobus_register_phy);
++
++/**
++ * fwnode_mdiobus_register - Register mii_bus and create PHYs from fwnode
++ * @mdio: pointer to mii_bus structure
++ * @fwnode: pointer to fwnode of MDIO bus.
++ *
++ * This function returns of_mdiobus_register() for DT and
++ * acpi_mdiobus_register() for ACPI.
++ */
++int fwnode_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode)
++{
++	if (is_of_node(fwnode))
++		return of_mdiobus_register(mdio, to_of_node(fwnode));
++
++	if (is_acpi_node(fwnode))
++		return acpi_mdiobus_register(mdio, fwnode);
++
++	return -EINVAL;
++}
++EXPORT_SYMBOL(fwnode_mdiobus_register);
+diff --git a/drivers/net/mdio/of_mdio.c b/drivers/net/mdio/of_mdio.c
+index 4daf94bb56a5..513afdd5e0ab 100644
+--- a/drivers/net/mdio/of_mdio.c
++++ b/drivers/net/mdio/of_mdio.c
+@@ -12,6 +12,7 @@
+ #include <linux/device.h>
+ #include <linux/netdevice.h>
+ #include <linux/err.h>
++#include <linux/fwnode_mdio.h>
+ #include <linux/phy.h>
+ #include <linux/phy_fixed.h>
+ #include <linux/of.h>
+@@ -29,20 +30,10 @@ MODULE_LICENSE("GPL");
+  * ethernet-phy-idAAAA.BBBB */
+ static int of_get_phy_id(struct device_node *device, u32 *phy_id)
+ {
+-	struct property *prop;
+-	const char *cp;
+-	unsigned int upper, lower;
+-
+-	of_property_for_each_string(device, "compatible", prop, cp) {
+-		if (sscanf(cp, "ethernet-phy-id%4x.%4x", &upper, &lower) == 2) {
+-			*phy_id = ((upper & 0xFFFF) << 16) | (lower & 0xFFFF);
+-			return 0;
+-		}
+-	}
+-	return -EINVAL;
++	return fwnode_get_phy_id(of_fwnode_handle(device), phy_id);
+ }
+ 
+-static struct mii_timestamper *of_find_mii_timestamper(struct device_node *node)
++struct mii_timestamper *of_find_mii_timestamper(struct device_node *node)
+ {
+ 	struct of_phandle_args arg;
+ 	int err;
+@@ -59,6 +50,7 @@ static struct mii_timestamper *of_find_mii_timestamper(struct device_node *node)
+ 
+ 	return register_mii_timestamper(arg.np, arg.args[0]);
+ }
++EXPORT_SYMBOL(of_find_mii_timestamper);
+ 
+ int of_mdiobus_phy_device_register(struct mii_bus *mdio, struct phy_device *phy,
+ 			      struct device_node *child, u32 addr)
+@@ -107,45 +99,7 @@ EXPORT_SYMBOL(of_mdiobus_phy_device_register);
+ static int of_mdiobus_register_phy(struct mii_bus *mdio,
+ 				    struct device_node *child, u32 addr)
+ {
+-	struct mii_timestamper *mii_ts;
+-	struct phy_device *phy;
+-	bool is_c45;
+-	int rc;
+-	u32 phy_id;
+-
+-	mii_ts = of_find_mii_timestamper(child);
+-	if (IS_ERR(mii_ts))
+-		return PTR_ERR(mii_ts);
+-
+-	is_c45 = of_device_is_compatible(child,
+-					 "ethernet-phy-ieee802.3-c45");
+-
+-	if (!is_c45 && !of_get_phy_id(child, &phy_id))
+-		phy = phy_device_create(mdio, addr, phy_id, 0, NULL);
+-	else
+-		phy = get_phy_device(mdio, addr, is_c45);
+-	if (IS_ERR(phy)) {
+-		if (mii_ts)
+-			unregister_mii_timestamper(mii_ts);
+-		return PTR_ERR(phy);
+-	}
+-
+-	rc = of_mdiobus_phy_device_register(mdio, phy, child, addr);
+-	if (rc) {
+-		if (mii_ts)
+-			unregister_mii_timestamper(mii_ts);
+-		phy_device_free(phy);
+-		return rc;
+-	}
+-
+-	/* phy->mii_ts may already be defined by the PHY driver. A
+-	 * mii_timestamper probed via the device tree will still have
+-	 * precedence.
+-	 */
+-	if (mii_ts)
+-		phy->mii_ts = mii_ts;
+-
+-	return 0;
++	return fwnode_mdiobus_register_phy(mdio, of_fwnode_handle(child), addr);
+ }
+ 
+ static int of_mdiobus_register_device(struct mii_bus *mdio,
+@@ -347,16 +301,7 @@ EXPORT_SYMBOL(of_mdiobus_register);
+  */
+ struct mdio_device *of_mdio_find_device(struct device_node *np)
+ {
+-	struct device *d;
+-
+-	if (!np)
+-		return NULL;
+-
+-	d = bus_find_device_by_of_node(&mdio_bus_type, np);
+-	if (!d)
+-		return NULL;
+-
+-	return to_mdio_device(d);
++	return fwnode_mdio_find_device(of_fwnode_handle(np));
+ }
+ EXPORT_SYMBOL(of_mdio_find_device);
+ 
+@@ -369,18 +314,7 @@ EXPORT_SYMBOL(of_mdio_find_device);
+  */
+ struct phy_device *of_phy_find_device(struct device_node *phy_np)
+ {
+-	struct mdio_device *mdiodev;
+-
+-	mdiodev = of_mdio_find_device(phy_np);
+-	if (!mdiodev)
+-		return NULL;
+-
+-	if (mdiodev->flags & MDIO_DEVICE_FLAG_PHY)
+-		return to_phy_device(&mdiodev->dev);
+-
+-	put_device(&mdiodev->dev);
+-
+-	return NULL;
++	return fwnode_phy_find_device(of_fwnode_handle(phy_np));
+ }
+ EXPORT_SYMBOL(of_phy_find_device);
+ 
+diff --git a/drivers/net/pcs/pcs-lynx.c b/drivers/net/pcs/pcs-lynx.c
+index 62bb9272dcb2..af36cd647bf5 100644
+--- a/drivers/net/pcs/pcs-lynx.c
++++ b/drivers/net/pcs/pcs-lynx.c
+@@ -11,6 +11,7 @@
+ #define LINK_TIMER_VAL(ns)		((u32)((ns) / SGMII_CLOCK_PERIOD_NS))
+ 
+ #define SGMII_AN_LINK_TIMER_NS		1600000 /* defined by SGMII spec */
++#define IEEE8023_LINK_TIMER_NS		10000000
+ 
+ #define LINK_TIMER_LO			0x12
+ #define LINK_TIMER_HI			0x13
+@@ -83,6 +84,7 @@ static void lynx_pcs_get_state(struct phylink_pcs *pcs,
+ 	struct lynx_pcs *lynx = phylink_pcs_to_lynx(pcs);
+ 
+ 	switch (state->interface) {
++	case PHY_INTERFACE_MODE_1000BASEX:
+ 	case PHY_INTERFACE_MODE_SGMII:
+ 	case PHY_INTERFACE_MODE_QSGMII:
+ 		phylink_mii_c22_pcs_get_state(lynx->mdio, state);
+@@ -108,6 +110,30 @@ static void lynx_pcs_get_state(struct phylink_pcs *pcs,
+ 		state->link, state->an_enabled, state->an_complete);
+ }
+ 
++static int lynx_pcs_config_1000basex(struct mdio_device *pcs,
++				     unsigned int mode,
++				     const unsigned long *advertising)
++{
++	struct mii_bus *bus = pcs->bus;
++	int addr = pcs->addr;
++	u32 link_timer;
++	int err;
++
++	link_timer = LINK_TIMER_VAL(IEEE8023_LINK_TIMER_NS);
++	mdiobus_write(bus, addr, LINK_TIMER_LO, link_timer & 0xffff);
++	mdiobus_write(bus, addr, LINK_TIMER_HI, link_timer >> 16);
++
++	err = mdiobus_modify(bus, addr, IF_MODE,
++			     IF_MODE_SGMII_EN | IF_MODE_USE_SGMII_AN,
++			     0);
++	if (err)
++		return err;
++
++	return phylink_mii_c22_pcs_config(pcs, mode,
++					  PHY_INTERFACE_MODE_1000BASEX,
++					  advertising);
++}
++
+ static int lynx_pcs_config_sgmii(struct mdio_device *pcs, unsigned int mode,
+ 				 const unsigned long *advertising)
+ {
+@@ -163,6 +189,8 @@ static int lynx_pcs_config(struct phylink_pcs *pcs, unsigned int mode,
+ 	struct lynx_pcs *lynx = phylink_pcs_to_lynx(pcs);
+ 
+ 	switch (ifmode) {
++	case PHY_INTERFACE_MODE_1000BASEX:
++		return lynx_pcs_config_1000basex(lynx->mdio, mode, advertising);
+ 	case PHY_INTERFACE_MODE_SGMII:
+ 	case PHY_INTERFACE_MODE_QSGMII:
+ 		return lynx_pcs_config_sgmii(lynx->mdio, mode, advertising);
+@@ -185,6 +213,13 @@ static int lynx_pcs_config(struct phylink_pcs *pcs, unsigned int mode,
+ 	return 0;
+ }
+ 
++static void lynx_pcs_an_restart(struct phylink_pcs *pcs)
++{
++	struct lynx_pcs *lynx = phylink_pcs_to_lynx(pcs);
++
++	phylink_mii_c22_pcs_an_restart(lynx->mdio);
++}
++
+ static void lynx_pcs_link_up_sgmii(struct mdio_device *pcs, unsigned int mode,
+ 				   int speed, int duplex)
+ {
+@@ -290,6 +325,7 @@ static void lynx_pcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
+ static const struct phylink_pcs_ops lynx_pcs_phylink_ops = {
+ 	.pcs_get_state = lynx_pcs_get_state,
+ 	.pcs_config = lynx_pcs_config,
++	.pcs_an_restart = lynx_pcs_an_restart,
+ 	.pcs_link_up = lynx_pcs_link_up,
+ };
+ 
+diff --git a/drivers/net/phy/mii_timestamper.c b/drivers/net/phy/mii_timestamper.c
+index b71b7456462d..51ae0593a04f 100644
+--- a/drivers/net/phy/mii_timestamper.c
++++ b/drivers/net/phy/mii_timestamper.c
+@@ -111,6 +111,9 @@ void unregister_mii_timestamper(struct mii_timestamper *mii_ts)
+ 	struct mii_timestamping_desc *desc;
+ 	struct list_head *this;
+ 
++	if (!mii_ts)
++		return;
++
+ 	/* mii_timestamper statically registered by the PHY driver won't use the
+ 	 * register_mii_timestamper() and thus don't have ->device set. Don't
+ 	 * try to unregister these.
+diff --git a/drivers/net/phy/phy_device.c b/drivers/net/phy/phy_device.c
+index dd1f711140c3..9f6b449cf388 100644
+--- a/drivers/net/phy/phy_device.c
++++ b/drivers/net/phy/phy_device.c
+@@ -9,6 +9,7 @@
+ 
+ #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+ 
++#include <linux/acpi.h>
+ #include <linux/bitmap.h>
+ #include <linux/delay.h>
+ #include <linux/errno.h>
+@@ -817,6 +818,27 @@ static int get_phy_c22_id(struct mii_bus *bus, int addr, u32 *phy_id)
+ 	return 0;
+ }
+ 
++/* Extract the phy ID from the compatible string of the form
++ * ethernet-phy-idAAAA.BBBB.
++ */
++int fwnode_get_phy_id(struct fwnode_handle *fwnode, u32 *phy_id)
++{
++	unsigned int upper, lower;
++	const char *cp;
++	int ret;
++
++	ret = fwnode_property_read_string(fwnode, "compatible", &cp);
++	if (ret)
++		return ret;
++
++	if (sscanf(cp, "ethernet-phy-id%4x.%4x", &upper, &lower) != 2)
++		return -EINVAL;
++
++	*phy_id = ((upper & GENMASK(15, 0)) << 16) | (lower & GENMASK(15, 0));
++	return 0;
++}
++EXPORT_SYMBOL(fwnode_get_phy_id);
++
+ /**
+  * get_phy_device - reads the specified PHY device and returns its @phy_device
+  *		    struct
+@@ -907,8 +929,7 @@ EXPORT_SYMBOL(phy_device_register);
+  */
+ void phy_device_remove(struct phy_device *phydev)
+ {
+-	if (phydev->mii_ts)
+-		unregister_mii_timestamper(phydev->mii_ts);
++	unregister_mii_timestamper(phydev->mii_ts);
+ 
+ 	device_del(&phydev->mdio.dev);
+ 
+@@ -2799,6 +2820,90 @@ static bool phy_drv_supports_irq(struct phy_driver *phydrv)
+ 	return phydrv->config_intr && phydrv->ack_interrupt;
+ }
+ 
++/**
++ * fwnode_mdio_find_device - Given a fwnode, find the mdio_device
++ * @fwnode: pointer to the mdio_device's fwnode
++ *
++ * If successful, returns a pointer to the mdio_device with the embedded
++ * struct device refcount incremented by one, or NULL on failure.
++ * The caller should call put_device() on the mdio_device after its use.
++ */
++struct mdio_device *fwnode_mdio_find_device(struct fwnode_handle *fwnode)
++{
++	struct device *d;
++
++	if (!fwnode)
++		return NULL;
++
++	d = bus_find_device_by_fwnode(&mdio_bus_type, fwnode);
++	if (!d)
++		return NULL;
++
++	return to_mdio_device(d);
++}
++EXPORT_SYMBOL(fwnode_mdio_find_device);
++
++/**
++ * fwnode_phy_find_device - For provided phy_fwnode, find phy_device.
++ *
++ * @phy_fwnode: Pointer to the phy's fwnode.
++ *
++ * If successful, returns a pointer to the phy_device with the embedded
++ * struct device refcount incremented by one, or NULL on failure.
++ */
++struct phy_device *fwnode_phy_find_device(struct fwnode_handle *phy_fwnode)
++{
++	struct mdio_device *mdiodev;
++
++	mdiodev = fwnode_mdio_find_device(phy_fwnode);
++	if (!mdiodev)
++		return NULL;
++
++	if (mdiodev->flags & MDIO_DEVICE_FLAG_PHY)
++		return to_phy_device(&mdiodev->dev);
++
++	put_device(&mdiodev->dev);
++
++	return NULL;
++}
++EXPORT_SYMBOL(fwnode_phy_find_device);
++
++/**
++ * device_phy_find_device - For the given device, get the phy_device
++ * @dev: Pointer to the given device
++ *
++ * Refer return conditions of fwnode_phy_find_device().
++ */
++struct phy_device *device_phy_find_device(struct device *dev)
++{
++	return fwnode_phy_find_device(dev_fwnode(dev));
++}
++EXPORT_SYMBOL_GPL(device_phy_find_device);
++
++/**
++ * fwnode_get_phy_node - Get the phy_node using the named reference.
++ * @fwnode: Pointer to fwnode from which phy_node has to be obtained.
++ *
++ * Refer return conditions of fwnode_find_reference().
++ * For ACPI, only "phy-handle" is supported. Legacy DT properties "phy"
++ * and "phy-device" are not supported in ACPI. DT supports all the three
++ * named references to the phy node.
++ */
++struct fwnode_handle *fwnode_get_phy_node(struct fwnode_handle *fwnode)
++{
++	struct fwnode_handle *phy_node;
++
++	/* Only phy-handle is used for ACPI */
++	phy_node = fwnode_find_reference(fwnode, "phy-handle", 0);
++	if (is_acpi_node(fwnode) || !IS_ERR(phy_node))
++		return phy_node;
++	phy_node = fwnode_find_reference(fwnode, "phy", 0);
++	if (IS_ERR(phy_node))
++		phy_node = fwnode_find_reference(fwnode, "phy-device", 0);
++	return phy_node;
++}
++EXPORT_SYMBOL_GPL(fwnode_get_phy_node);
++
+ /**
+  * phy_probe - probe and init a PHY device
+  * @dev: device to probe and init
+diff --git a/drivers/net/phy/phylink.c b/drivers/net/phy/phylink.c
+index fe2296fdda19..2aa31ff60d9b 100644
+--- a/drivers/net/phy/phylink.c
++++ b/drivers/net/phy/phylink.c
+@@ -5,6 +5,7 @@
+  *
+  * Copyright (C) 2015 Russell King
+  */
++#include <linux/acpi.h>
+ #include <linux/ethtool.h>
+ #include <linux/export.h>
+ #include <linux/gpio/consumer.h>
+@@ -1079,7 +1080,26 @@ EXPORT_SYMBOL_GPL(phylink_connect_phy);
+ int phylink_of_phy_connect(struct phylink *pl, struct device_node *dn,
+ 			   u32 flags)
+ {
+-	struct device_node *phy_node;
++	return phylink_fwnode_phy_connect(pl, of_fwnode_handle(dn), flags);
++}
++EXPORT_SYMBOL_GPL(phylink_of_phy_connect);
++
++/**
++ * phylink_fwnode_phy_connect() - connect the PHY specified in the fwnode.
++ * @pl: a pointer to a &struct phylink returned from phylink_create()
++ * @fwnode: a pointer to a &struct fwnode_handle.
++ * @flags: PHY-specific flags to communicate to the PHY device driver
++ *
++ * Connect the phy specified @fwnode to the phylink instance specified
++ * by @pl.
++ *
++ * Returns 0 on success or a negative errno.
++ */
++int phylink_fwnode_phy_connect(struct phylink *pl,
++			       struct fwnode_handle *fwnode,
++			       u32 flags)
++{
++	struct fwnode_handle *phy_fwnode;
+ 	struct phy_device *phy_dev;
+ 	int ret;
+ 
+@@ -1089,28 +1109,25 @@ int phylink_of_phy_connect(struct phylink *pl, struct device_node *dn,
+ 	     phy_interface_mode_is_8023z(pl->link_interface)))
+ 		return 0;
+ 
+-	phy_node = of_parse_phandle(dn, "phy-handle", 0);
+-	if (!phy_node)
+-		phy_node = of_parse_phandle(dn, "phy", 0);
+-	if (!phy_node)
+-		phy_node = of_parse_phandle(dn, "phy-device", 0);
+-
+-	if (!phy_node) {
++	phy_fwnode = fwnode_get_phy_node(fwnode);
++	if (IS_ERR(phy_fwnode)) {
+ 		if (pl->cfg_link_an_mode == MLO_AN_PHY)
+ 			return -ENODEV;
+ 		return 0;
+ 	}
+ 
+-	phy_dev = of_phy_find_device(phy_node);
++	phy_dev = fwnode_phy_find_device(phy_fwnode);
+ 	/* We're done with the phy_node handle */
+-	of_node_put(phy_node);
++	fwnode_handle_put(phy_fwnode);
+ 	if (!phy_dev)
+ 		return -ENODEV;
+ 
+ 	ret = phy_attach_direct(pl->netdev, phy_dev, flags,
+ 				pl->link_interface);
+-	if (ret)
++	if (ret) {
++		phy_device_free(phy_dev);
+ 		return ret;
++	}
+ 
+ 	ret = phylink_bringup_phy(pl, phy_dev, pl->link_config.interface);
+ 	if (ret)
+@@ -1118,7 +1135,7 @@ int phylink_of_phy_connect(struct phylink *pl, struct device_node *dn,
+ 
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(phylink_of_phy_connect);
++EXPORT_SYMBOL_GPL(phylink_fwnode_phy_connect);
+ 
+ /**
+  * phylink_disconnect_phy() - disconnect any PHY attached to the phylink
+diff --git a/drivers/soc/fsl/guts.c b/drivers/soc/fsl/guts.c
+index 34810f9bb2ee..56b6797c265e 100644
+--- a/drivers/soc/fsl/guts.c
++++ b/drivers/soc/fsl/guts.c
+@@ -3,6 +3,7 @@
+  * Freescale QorIQ Platforms GUTS Driver
+  *
+  * Copyright (C) 2016 Freescale Semiconductor, Inc.
++ * Copyright 2020 NXP
+  */
+ 
+ #include <linux/io.h>
+@@ -138,7 +139,7 @@ static u32 fsl_guts_get_svr(void)
+ 
+ static int fsl_guts_probe(struct platform_device *pdev)
+ {
+-	struct device_node *np = pdev->dev.of_node;
++	struct device_node *root;
+ 	struct device *dev = &pdev->dev;
+ 	struct resource *res;
+ 	const struct fsl_soc_die_attr *soc_die;
+@@ -150,7 +151,8 @@ static int fsl_guts_probe(struct platform_device *pdev)
+ 	if (!guts)
+ 		return -ENOMEM;
+ 
+-	guts->little_endian = of_property_read_bool(np, "little-endian");
++	guts->little_endian = fwnode_property_read_bool(pdev->dev.fwnode,
++							"little-endian");
+ 
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	guts->regs = devm_ioremap_resource(dev, res);
+@@ -158,9 +160,17 @@ static int fsl_guts_probe(struct platform_device *pdev)
+ 		return PTR_ERR(guts->regs);
+ 
+ 	/* Register soc device */
+-	root = of_find_node_by_path("/");
+-	if (of_property_read_string(root, "model", &machine))
+-		of_property_read_string_index(root, "compatible", 0, &machine);
++	if (dev_of_node(&pdev->dev)) {
++		root = of_find_node_by_path("/");
++		if (of_property_read_string(root, "model", &machine))
++			of_property_read_string_index(root,
++					"compatible", 0, &machine);
++		of_node_put(root);
++	} else {
++		fwnode_property_read_string(pdev->dev.fwnode,
++				"model", &machine);
++	}
++
+ 	if (machine)
+ 		soc_dev_attr.machine = machine;
+ 
+@@ -234,10 +244,17 @@ static const struct of_device_id fsl_guts_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, fsl_guts_of_match);
+ 
++static const struct acpi_device_id fsl_guts_acpi_match[] = {
++	{"NXP0030", 0 },
++	{ }
++};
++MODULE_DEVICE_TABLE(acpi, fsl_guts_acpi_match);
++
+ static struct platform_driver fsl_guts_driver = {
+ 	.driver = {
+ 		.name = "fsl-guts",
+ 		.of_match_table = fsl_guts_of_match,
++		.acpi_match_table = fsl_guts_acpi_match,
+ 	},
+ 	.probe = fsl_guts_probe,
+ 	.remove = fsl_guts_remove,
+diff --git a/include/acpi/actbl2.h b/include/acpi/actbl2.h
+index ec66779cb193..274fce7b5c01 100644
+--- a/include/acpi/actbl2.h
++++ b/include/acpi/actbl2.h
+@@ -68,7 +68,7 @@
+  * IORT - IO Remapping Table
+  *
+  * Conforms to "IO Remapping Table System Software on ARM Platforms",
+- * Document number: ARM DEN 0049D, March 2018
++ * Document number: ARM DEN 0049E, June 2020
+  *
+  ******************************************************************************/
+ 
+@@ -86,7 +86,8 @@ struct acpi_iort_node {
+ 	u8 type;
+ 	u16 length;
+ 	u8 revision;
+-	u32 reserved;
++	u16 reserved;
++	u16 identifier;
+ 	u32 mapping_count;
+ 	u32 mapping_offset;
+ 	char node_data[1];
+@@ -100,7 +101,8 @@ enum acpi_iort_node_type {
+ 	ACPI_IORT_NODE_PCI_ROOT_COMPLEX = 0x02,
+ 	ACPI_IORT_NODE_SMMU = 0x03,
+ 	ACPI_IORT_NODE_SMMU_V3 = 0x04,
+-	ACPI_IORT_NODE_PMCG = 0x05
++	ACPI_IORT_NODE_PMCG = 0x05,
++	ACPI_IORT_NODE_RMR = 0x06,
+ };
+ 
+ struct acpi_iort_id_mapping {
+@@ -167,10 +169,10 @@ struct acpi_iort_root_complex {
+ 	u8 reserved[3];		/* Reserved, must be zero */
+ };
+ 
+-/* Values for ats_attribute field above */
++/* Masks for ats_attribute field above */
+ 
+-#define ACPI_IORT_ATS_SUPPORTED         0x00000001	/* The root complex supports ATS */
+-#define ACPI_IORT_ATS_UNSUPPORTED       0x00000000	/* The root complex doesn't support ATS */
++#define ACPI_IORT_ATS_SUPPORTED         (1)	/* The root complex supports ATS */
++#define ACPI_IORT_PRI_SUPPORTED         (1<<1)	/* The root complex supports PRI */
+ 
+ struct acpi_iort_smmu {
+ 	u64 base_address;	/* SMMU base address */
+@@ -241,6 +243,17 @@ struct acpi_iort_pmcg {
+ 	u64 page1_base_address;
+ };
+ 
++struct acpi_iort_rmr {
++	u32 rmr_count;
++	u32 rmr_offset;
++};
++
++struct acpi_iort_rmr_desc {
++	u64 base_address;
++	u64 length;
++	u32 reserved;
++};
++
+ /*******************************************************************************
+  *
+  * IVRS - I/O Virtualization Reporting Structure
+diff --git a/include/linux/acpi.h b/include/linux/acpi.h
+index 5b1dc1ad4fb3..f62724b3849c 100644
+--- a/include/linux/acpi.h
++++ b/include/linux/acpi.h
+@@ -699,6 +699,8 @@ static inline u64 acpi_arch_get_root_pointer(void)
+ }
+ #endif
+ 
++int acpi_get_local_address(acpi_handle handle, u32 *addr);
++
+ #else	/* !CONFIG_ACPI */
+ 
+ #define acpi_disabled 1
+@@ -946,6 +948,11 @@ static inline struct acpi_device *acpi_resource_consumer(struct resource *res)
+ 	return NULL;
+ }
+ 
++static inline int acpi_get_local_address(acpi_handle handle, u32 *addr)
++{
++	return -ENODEV;
++}
++
+ #endif	/* !CONFIG_ACPI */
+ 
+ #ifdef CONFIG_ACPI_HOTPLUG_IOAPIC
+diff --git a/include/linux/acpi_iort.h b/include/linux/acpi_iort.h
+index 1a12baa58e40..c837fc6e95fe 100644
+--- a/include/linux/acpi_iort.h
++++ b/include/linux/acpi_iort.h
+@@ -39,6 +39,8 @@ const struct iommu_ops *iort_iommu_configure_id(struct device *dev,
+ 						const u32 *id_in);
+ int iort_iommu_msi_get_resv_regions(struct device *dev, struct list_head *head);
+ phys_addr_t acpi_iort_dma_get_max_cpu_address(void);
++int iort_iommu_get_rmrs(struct fwnode_handle *iommu_fwnode,
++			struct list_head *list);
+ #else
+ static inline void acpi_iort_init(void) { }
+ static inline u32 iort_msi_map_id(struct device *dev, u32 id)
+@@ -59,6 +61,11 @@ int iort_iommu_msi_get_resv_regions(struct device *dev, struct list_head *head)
+ 
+ static inline phys_addr_t acpi_iort_dma_get_max_cpu_address(void)
+ { return PHYS_ADDR_MAX; }
++=======
++
++int iort_iommu_get_rmrs(struct fwnode_handle *iommu_fwnode,
++			struct list_head *list)
++{ return 0; }
+ #endif
+ 
+ #endif /* __ACPI_IORT_H__ */
+diff --git a/include/linux/acpi_mdio.h b/include/linux/acpi_mdio.h
+new file mode 100644
+index 000000000000..748d261fe2f9
+--- /dev/null
++++ b/include/linux/acpi_mdio.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * ACPI helper for the MDIO (Ethernet PHY) API
++ */
++
++#ifndef __LINUX_ACPI_MDIO_H
++#define __LINUX_ACPI_MDIO_H
++
++#include <linux/phy.h>
++
++#if IS_ENABLED(CONFIG_ACPI_MDIO)
++int acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode);
++#else /* CONFIG_ACPI_MDIO */
++static inline int acpi_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode)
++{
++	/*
++	 * Fall back to mdiobus_register() function to register a bus.
++	 * This way, we don't have to keep compat bits around in drivers.
++	 */
++
++	return mdiobus_register(mdio);
++}
++#endif
++
++#endif /* __LINUX_ACPI_MDIO_H */
+diff --git a/include/linux/dma-iommu.h b/include/linux/dma-iommu.h
+index 2112f21f73d8..f502855e4da0 100644
+--- a/include/linux/dma-iommu.h
++++ b/include/linux/dma-iommu.h
+@@ -37,6 +37,9 @@ void iommu_dma_compose_msi_msg(struct msi_desc *desc,
+ 
+ void iommu_dma_get_resv_regions(struct device *dev, struct list_head *list);
+ 
++int iommu_dma_get_rmrs(struct fwnode_handle *iommu, struct list_head *list);
++struct iommu_rmr *iommu_dma_alloc_rmr(u64 base, u64 length,
++				      u32 *ids, int num_ids);
+ #else /* CONFIG_IOMMU_DMA */
+ 
+ struct iommu_domain;
+@@ -78,5 +81,9 @@ static inline void iommu_dma_get_resv_regions(struct device *dev, struct list_he
+ {
+ }
+ 
++int iommu_dma_get_rmrs(struct fwnode_handle *iommu, struct list_head *list)
++{
++	return 0;
++}
+ #endif	/* CONFIG_IOMMU_DMA */
+ #endif	/* __DMA_IOMMU_H */
+diff --git a/include/linux/fsl/mc.h b/include/linux/fsl/mc.h
+index db244874e834..63b56aba925a 100644
+--- a/include/linux/fsl/mc.h
++++ b/include/linux/fsl/mc.h
+@@ -13,6 +13,7 @@
+ #include <linux/device.h>
+ #include <linux/mod_devicetable.h>
+ #include <linux/interrupt.h>
++#include <uapi/linux/fsl_mc.h>
+ 
+ #define FSL_MC_VENDOR_FREESCALE	0x1957
+ 
+@@ -209,8 +210,6 @@ struct fsl_mc_device {
+ #define to_fsl_mc_device(_dev) \
+ 	container_of(_dev, struct fsl_mc_device, dev)
+ 
+-#define MC_CMD_NUM_OF_PARAMS	7
+-
+ struct mc_cmd_header {
+ 	u8 src_id;
+ 	u8 flags_hw;
+@@ -220,11 +219,6 @@ struct mc_cmd_header {
+ 	__le16 cmd_id;
+ };
+ 
+-struct fsl_mc_command {
+-	__le64 header;
+-	__le64 params[MC_CMD_NUM_OF_PARAMS];
+-};
+-
+ enum mc_cmd_status {
+ 	MC_CMD_STATUS_OK = 0x0, /* Completed successfully */
+ 	MC_CMD_STATUS_READY = 0x1, /* Ready to be processed */
+diff --git a/include/linux/fwnode_mdio.h b/include/linux/fwnode_mdio.h
+new file mode 100644
+index 000000000000..20f22211260b
+--- /dev/null
++++ b/include/linux/fwnode_mdio.h
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * FWNODE helper for the MDIO (Ethernet PHY) API
++ */
++
++#ifndef __LINUX_FWNODE_MDIO_H
++#define __LINUX_FWNODE_MDIO_H
++
++#include <linux/phy.h>
++
++#if IS_ENABLED(CONFIG_FWNODE_MDIO)
++int fwnode_mdiobus_register_phy(struct mii_bus *bus,
++				struct fwnode_handle *child, u32 addr);
++
++int fwnode_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode);
++#else /* CONFIG_FWNODE_MDIO */
++static inline int fwnode_mdiobus_register_phy(struct mii_bus *bus,
++					      struct fwnode_handle *child,
++					      u32 addr)
++{
++	return -EINVAL;
++}
++static int fwnode_mdiobus_register(struct mii_bus *mdio, struct fwnode_handle *fwnode)
++{
++	return -EINVAL;
++}
++#endif
++
++#endif /* __LINUX_FWNODE_MDIO_H */
+diff --git a/include/linux/iommu.h b/include/linux/iommu.h
+index f11f5072af5d..d76a6da8df0b 100644
+--- a/include/linux/iommu.h
++++ b/include/linux/iommu.h
+@@ -592,6 +592,22 @@ struct iommu_sva {
+ 	struct device			*dev;
+ };
+ 
++/**
++ * struct iommu_rmr - Reserved Memory Region details per IOMMU
++ * @list: Linked list pointers to hold RMR region info
++ * @base_address: base address of Reserved Memory Region
++ * @length: length of memory region
++ * @num_ids: number of associated device IDs
++ * @ids: associated device IDs
++ */
++struct iommu_rmr {
++	struct list_head	list;
++	phys_addr_t		base_address;
++	u64			length;
++	unsigned int		num_ids;
++	u32			ids[];
++};
++
+ int iommu_fwspec_init(struct device *dev, struct fwnode_handle *iommu_fwnode,
+ 		      const struct iommu_ops *ops);
+ void iommu_fwspec_free(struct device *dev);
+diff --git a/include/linux/mmc/host.h b/include/linux/mmc/host.h
+index c079b932330f..e26382febc0a 100644
+--- a/include/linux/mmc/host.h
++++ b/include/linux/mmc/host.h
+@@ -484,7 +484,7 @@ int mmc_add_host(struct mmc_host *);
+ void mmc_remove_host(struct mmc_host *);
+ void mmc_free_host(struct mmc_host *);
+ int mmc_of_parse(struct mmc_host *host);
+-int mmc_of_parse_voltage(struct device_node *np, u32 *mask);
++int mmc_of_parse_voltage(struct device *dev, u32 *mask);
+ 
+ static inline void *mmc_priv(struct mmc_host *host)
+ {
+diff --git a/include/linux/of_mdio.h b/include/linux/of_mdio.h
+index cfe8c607a628..3b66016f18aa 100644
+--- a/include/linux/of_mdio.h
++++ b/include/linux/of_mdio.h
+@@ -34,6 +34,7 @@ struct mii_bus *of_mdio_find_bus(struct device_node *mdio_np);
+ int of_phy_register_fixed_link(struct device_node *np);
+ void of_phy_deregister_fixed_link(struct device_node *np);
+ bool of_phy_is_fixed_link(struct device_node *np);
++struct mii_timestamper *of_find_mii_timestamper(struct device_node *np);
+ int of_mdiobus_phy_device_register(struct mii_bus *mdio, struct phy_device *phy,
+ 				   struct device_node *child, u32 addr);
+ 
+@@ -128,7 +129,10 @@ static inline bool of_phy_is_fixed_link(struct device_node *np)
+ {
+ 	return false;
+ }
+-
++static inline struct mii_timestamper *of_find_mii_timestamper(struct device_node *np)
++{
++	return NULL;
++}
+ static inline int of_mdiobus_phy_device_register(struct mii_bus *mdio,
+ 					    struct phy_device *phy,
+ 					    struct device_node *child, u32 addr)
+diff --git a/include/linux/phy.h b/include/linux/phy.h
+index 56563e5e0dc7..d0c5d9034689 100644
+--- a/include/linux/phy.h
++++ b/include/linux/phy.h
+@@ -1348,10 +1348,41 @@ struct phy_device *phy_device_create(struct mii_bus *bus, int addr, u32 phy_id,
+ 				     bool is_c45,
+ 				     struct phy_c45_device_ids *c45_ids);
+ #if IS_ENABLED(CONFIG_PHYLIB)
++int fwnode_get_phy_id(struct fwnode_handle *fwnode, u32 *phy_id);
++struct mdio_device *fwnode_mdio_find_device(struct fwnode_handle *fwnode);
++struct phy_device *fwnode_phy_find_device(struct fwnode_handle *phy_fwnode);
++struct phy_device *device_phy_find_device(struct device *dev);
++struct fwnode_handle *fwnode_get_phy_node(struct fwnode_handle *fwnode);
+ struct phy_device *get_phy_device(struct mii_bus *bus, int addr, bool is_c45);
+ int phy_device_register(struct phy_device *phy);
+ void phy_device_free(struct phy_device *phydev);
+ #else
++static inline int fwnode_get_phy_id(struct fwnode_handle *fwnode, u32 *phy_id)
++{
++	return 0;
++}
++static inline
++struct mdio_device *fwnode_mdio_find_device(struct fwnode_handle *fwnode)
++{
++	return 0;
++}
++static inline
++struct phy_device *fwnode_phy_find_device(struct fwnode_handle *phy_fwnode)
++{
++	return NULL;
++}
++
++static inline struct phy_device *device_phy_find_device(struct device *dev)
++{
++	return NULL;
++}
++
++static inline
++struct fwnode_handle *fwnode_get_phy_node(struct fwnode_handle *fwnode)
++{
++	return NULL;
++}
++
+ static inline
+ struct phy_device *get_phy_device(struct mii_bus *bus, int addr, bool is_c45)
+ {
+diff --git a/include/linux/phylink.h b/include/linux/phylink.h
+index d81a714cfbbd..75d4f99090fd 100644
+--- a/include/linux/phylink.h
++++ b/include/linux/phylink.h
+@@ -439,6 +439,9 @@ void phylink_destroy(struct phylink *);
+ 
+ int phylink_connect_phy(struct phylink *, struct phy_device *);
+ int phylink_of_phy_connect(struct phylink *, struct device_node *, u32 flags);
++int phylink_fwnode_phy_connect(struct phylink *pl,
++			       struct fwnode_handle *fwnode,
++			       u32 flags);
+ void phylink_disconnect_phy(struct phylink *);
+ 
+ void phylink_mac_change(struct phylink *, bool up);
+diff --git a/include/linux/property.h b/include/linux/property.h
+index 2d4542629d80..3e0a1a5655f0 100644
+--- a/include/linux/property.h
++++ b/include/linux/property.h
+@@ -379,6 +379,8 @@ bool device_dma_supported(struct device *dev);
+ 
+ enum dev_dma_attr device_get_dma_attr(struct device *dev);
+ 
++bool dev_dma_is_coherent(struct device *dev);
++
+ const void *device_get_match_data(struct device *dev);
+ 
+ int device_get_phy_mode(struct device *dev);
+diff --git a/include/uapi/linux/fsl_mc.h b/include/uapi/linux/fsl_mc.h
+new file mode 100644
+index 000000000000..e57451570033
+--- /dev/null
++++ b/include/uapi/linux/fsl_mc.h
+@@ -0,0 +1,34 @@
++/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
++/*
++ * Management Complex (MC) userspace public interface
++ *
++ * Copyright 2021 NXP
++ *
++ */
++#ifndef _UAPI_FSL_MC_H_
++#define _UAPI_FSL_MC_H_
++
++#include <linux/types.h>
++
++#define MC_CMD_NUM_OF_PARAMS	7
++
++/**
++ * struct fsl_mc_command - Management Complex (MC) command structure
++ * @header: MC command header
++ * @params: MC command parameters
++ *
++ * Used by FSL_MC_SEND_MC_COMMAND
++ */
++struct fsl_mc_command {
++	__le64 header;
++	__le64 params[MC_CMD_NUM_OF_PARAMS];
++};
++
++#define FSL_MC_SEND_CMD_IOCTL_TYPE	'R'
++#define FSL_MC_SEND_CMD_IOCTL_SEQ	0xE0
++
++#define FSL_MC_SEND_MC_COMMAND \
++	_IOWR(FSL_MC_SEND_CMD_IOCTL_TYPE, FSL_MC_SEND_CMD_IOCTL_SEQ, \
++	struct fsl_mc_command)
++
++#endif /* _UAPI_FSL_MC_H_ */
